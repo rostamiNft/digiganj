@@ -349,6 +349,8 @@ def cmd_challenge(args) -> int:
                 note=args.note or "",
                 list_path=args.list_path or "/treasure-hunt/products/",
                 era=args.era or "",
+                category_ids=[int(x) for x in (args.category or [])],
+                code_format=(args.code_format or ""),
             )
         )
         cfg.validate()
@@ -1070,6 +1072,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--note")
     p.add_argument("--era")
     p.add_argument("--list-path")
+    p.add_argument("--category", type=int, action="append",
+                   help="شناسهٔ دسته‌بندی که کد میان عکس‌هایش پنهان است (تکرارپذیر)")
+    p.add_argument("--code-format", choices=["dk-hunt", "legacy-1400"],
+                   help="قالب کد این دوره (پیش‌فرض: خودکار)")
     p.add_argument("--config", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_challenge)
 

@@ -48,6 +48,16 @@ class Challenge:
     tags: list[str] = field(default_factory=list)
     list_path: str = "/treasure-hunt/products/"
     era: str = ""  # مثل «۱۴۰۰» یا «۱۴۰۳»
+    # ---- مسیر جستجوی محصولات (از دورهٔ ۱۴۰۵ به بعد) ----
+    # در دوره‌های جدید، فهرست محصولات یک «جستجوی دسته‌بندی» است که خودِ
+    # صفحهٔ ایونت اعلام می‌کند؛ مثلاً:
+    #   /search/?categories[0]=10942&categories[1]=5604&sort=7
+    # اگر خالی باشد، ``list_path`` استفاده می‌شود (رفتار دوره‌های قدیم).
+    search_path: str = ""
+    # شناسهٔ دسته‌بندی‌هایی که کدها میان عکس‌هایشان پنهان است
+    category_ids: list[int] = field(default_factory=list)
+    # آیا کد گنج در این دوره «DK + حروف» است
+    code_format: str = ""  # "" = خودکار از روی CODE_FORMATS
     enabled: bool = True
 
     # ---- زمان‌ها (محاسبه‌شده) ----
@@ -97,6 +107,9 @@ class Challenge:
             "note": self.note,
             "tags": list(self.tags),
             "list_path": self.list_path,
+            "search_path": self.search_path,
+            "category_ids": list(self.category_ids),
+            "code_format": self.code_format,
             "era": self.era,
             "enabled": self.enabled,
         }
@@ -112,6 +125,9 @@ class Challenge:
             note=str(d.get("note", "")),
             tags=list(d.get("tags", []) or []),
             list_path=str(d.get("list_path", "/treasure-hunt/products/")),
+            search_path=str(d.get("search_path", "") or ""),
+            category_ids=[int(x) for x in (d.get("category_ids") or [])],
+            code_format=str(d.get("code_format", "") or ""),
             era=str(d.get("era", "")),
             enabled=bool(d.get("enabled", True)),
         )
@@ -156,6 +172,29 @@ def _default_challenges() -> list[Challenge]:
             note="دورهٔ تاریخی؛ برای بازپخش/پژوهش.",
             tags=["تاریخی", "بلک‌فرایدی"],
             era="۱۴۰۳",
+        ),
+        Challenge(
+            id="bf-1405",
+            title="جاکدی / شکار گنج ۱۴۰۵",
+            starts_at="2026-11-24T00:00:00+03:30",
+            ends_at="2026-12-06T23:59:59+03:30",
+            prize="۹۹٪ تخفیف یکی از کالاهای جایزه + طلای دیجیتال",
+            note=(
+                "قالب ۱۴۰۵: کد گنج «DK + ۳ یا ۴ حرف» (۵ یا ۶ کاراکتر، فقط حروف) "
+                "و در گالری عکس کالاهای دسته‌بندی‌های اعلام‌شده پنهان می‌شود. "
+                "دسته‌بندی‌ها هر ساعت در صفحهٔ /landings/prize-catcher/?tab=hunt "
+                "اعلام می‌شوند؛ شناسه‌ها را از لینک «دیدن کالاها» همان صفحه بردارید."
+            ),
+            tags=["جاکدی", "بلک‌فرایدی", "۱۴۰۵"],
+            era="۱۴۰۵",
+            search_path=(
+                "/search/?categories%5B0%5D=10942&categories%5B1%5D=5604"
+                "&categories%5B2%5D=11225&categories%5B3%5D=2402"
+                "&categories%5B4%5D=10476&categories%5B5%5D=11112"
+                "&categories%5B6%5D=11586&sort=7"
+            ),
+            category_ids=[10942, 5604, 11225, 2402, 10476, 11112, 11586],
+            code_format="dk-hunt",
         ),
     ]
 
@@ -389,7 +428,27 @@ class Config:
         return self.api_base_url.rstrip("/") + "/" + path.lstrip("/")
 
     def challenge_url(self, challenge: Challenge) -> str:
+        """آدرسی که فهرست محصولات دوره از آن خوانده می‌شود.
+
+        اگر دوره مسیر جستجوی دسته‌بندی داشته باشد، همان مقدم است: در
+        دوره‌های جدید، دسته‌بندی‌ها هر ساعت عوض می‌شوند و در خود صفحهٔ
+        ایونت اعلام می‌شوند.
+        """
+        if challenge.search_path:
+            return self.url(challenge.search_path)
+        if challenge.category_ids:
+            return self.search_url(challenge.category_ids)
         return self.url(challenge.list_path)
+
+    def search_url(self, category_ids: "list[int]", sort: int = 7) -> str:
+        """ساخت آدرس جستجوی دسته‌بندی، هم‌شکل با لینک صفحهٔ ایونت."""
+        from urllib.parse import quote
+
+        parts = "&".join(
+            quote(f"categories[{i}]") + f"={int(cid)}"
+            for i, cid in enumerate(category_ids)
+        )
+        return self.url(f"/search/?{parts}&sort={int(sort)}")
 
     def gallery_api_url(self, product_id: str | int) -> str:
         """آدرس API گالری محصول: ``/v1/product/dkp-{id}/``."""

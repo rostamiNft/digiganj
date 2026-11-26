@@ -35,7 +35,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
 
 from . import utils
 
@@ -216,6 +216,11 @@ def confusables(ch: str) -> tuple[str, ...]:
     return tuple(out)
 
 
+def _fmt_for(code: str) -> dict[str, Any]:
+    fid = detect_format(code)
+    return next((f for f in CODE_FORMATS if f["id"] == fid), {}) or {}
+
+
 def case_variants(code: str) -> list[str]:
     """گونه‌های حرف بزرگ/کوچک — رمز به بزرگی و کوچکی حروف حساس است.
 
@@ -229,7 +234,7 @@ def case_variants(code: str) -> list[str]:
     lower = code.lower()
     upper = code.upper()
     for v in (lower, upper, code):
-        if v not in out:
+        if v not in out and (not detect_format(code) or match_format(v, _fmt_for(code))):
             out.append(v)
     # الگوی رایج: حرف اولِ هر «کلمه» بزرگ، بقیه کوچک
     import re as _re
@@ -241,7 +246,7 @@ def case_variants(code: str) -> list[str]:
             normal += part
         else:
             normal += part[0].upper() + part[1:].lower()
-    if normal and normal not in out:
+    if normal and normal not in out and (not detect_format(code) or match_format(normal, _fmt_for(code))):
         out.append(normal)
     return [v for v in out if v != code]
 
@@ -261,6 +266,17 @@ def code_variants(code: str, max_variants: int = 8, positions: int = 3,
     """
     if not code:
         return []
+    # قالب کد اصلی: گونه‌ها نباید از قالب بیرون بزنند. مثال واقعی: در قالب
+    # «DK + فقط حروف»، تبدیل K→X یا O→0 کد را بی‌اعتبار می‌کند و فقط
+    # نامزدهای ساختگی تولید می‌کند که کاربر را از جواب درست دور می‌کند.
+    fmt_id = detect_format(code)
+    fmt = next((f for f in CODE_FORMATS if f["id"] == fmt_id), None)
+
+    def _valid(cand: str) -> bool:
+        if fmt is None:
+            return True
+        return match_format(cand, fmt)
+
     idx = [
         i for i, ch in enumerate(code)
         if confusables(ch) and CONFUSABLE_RISK.get(ch, 1) >= min_risk
@@ -276,6 +292,8 @@ def code_variants(code: str, max_variants: int = 8, positions: int = 3,
         risk = CONFUSABLE_RISK.get(code[i], 1)
         for repl in [r for r in confusables(code[i]) if CONFUSABLE_RISK.get(r, 1) >= risk][:per_position]:
             cand = code[:i] + repl + code[i + 1:]
+            if not _valid(cand):
+                continue
             if cand not in seen:
                 seen.add(cand)
                 variants.append(cand)
@@ -288,6 +306,8 @@ def code_variants(code: str, max_variants: int = 8, positions: int = 3,
         for r1 in confusables(code[i])[:2]:
             for r2 in confusables(code[i + 1])[:2]:
                 cand = code[:i] + r1 + r2 + code[i + 2:]
+                if not _valid(cand):
+                    continue
                 if cand not in seen:
                     seen.add(cand)
                     variants.append(cand)
@@ -306,10 +326,84 @@ def _entropy(s: str) -> float:
     return -sum((c / n) * math.log2(c / n) for c in counts.values())
 
 
-def plausible_code(code: str) -> bool:
-    """فیلتر رمزهای بی‌معنی (تاریخ، شمارهٔ تلفن، تکرار، مسیر فایل و…)."""
+# --------------------------------------------------------------------------- #
+# قالب‌های رمز در دوره‌های مختلف ایونت
+# --------------------------------------------------------------------------- #
+#
+# ۱۴۰۰ (شکار گنج قدیم): ۱۰ کاراکتر مخلوط حرف بزرگ/کوچک و رقم — مثل «fvKA4jd9DP»
+# ۱۴۰۵ (جاکدی + شکار گنج): با «DK» شروع می‌شود، ۵ یا ۶ کاراکتر، فقط حروف —
+#                          مثل «DKABC» یا «DKABCD»
+#
+# قالب‌ها عمداً «داده» هستند، نه کد ثابت: اگر سال بعد باز عوض شد، فقط این
+# فهرست به‌روز می‌شود.
+CODE_FORMATS: tuple[dict[str, Any], ...] = (
+    {
+        "id": "dk-hunt",
+        "title": "شکار گنج (DK + حروف)",
+        "prefix": "DK",
+        "lengths": (5, 6),
+        "letters_only": True,
+        "regex": r"DK[A-Za-z]{3,4}",
+    },
+    {
+        "id": "legacy-1400",
+        "title": "شکار گنج ۱۴۰۰ (۱۰ کاراکتر مخلوط)",
+        "prefix": "",
+        "lengths": (10,),
+        "letters_only": False,
+        "regex": r"(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{10}",
+    },
+)
+
+
+def match_format(code: str, fmt: dict[str, Any]) -> bool:
+    """آیا ``code`` با این قالب می‌خواند؟"""
     if not code:
         return False
+    lengths = tuple(fmt.get("lengths") or ())
+    if lengths and len(code) not in lengths:
+        return False
+    prefix = str(fmt.get("prefix") or "")
+    if prefix and not code.upper().startswith(prefix.upper()):
+        return False
+    if fmt.get("letters_only") and not code.isalpha():
+        return False
+    return True
+
+
+def detect_format(code: str) -> str:
+    """شناسهٔ قالبی که کد با آن می‌خواند (یا رشتهٔ خالی)."""
+    for fmt in CODE_FORMATS:
+        if match_format(code, fmt):
+            return str(fmt["id"])
+    return ""
+
+
+def hunt_code_pattern(formats: Iterable[dict[str, Any]] | None = None) -> str:
+    """الگوی جستجوی ترکیبی برای همهٔ قالب‌ها (برای یک بار پیمایش متن)."""
+    parts: list[str] = []
+    for fmt in (formats or CODE_FORMATS):
+        rx = str(fmt.get("regex") or "")
+        if rx:
+            parts.append(f"(?:{rx})")
+    return "|".join(parts) if parts else r"(?!)"
+
+
+def is_hunt_code(code: str) -> bool:
+    """آیا این رشته کد گنج است (به‌هر قالبی)؟"""
+    return bool(detect_format(code))
+
+
+def plausible_code(code: str) -> bool:
+    """فیلتر رمزهای بی‌معنی (تاریخ، شمارهٔ تلفن، تکرار، مسیر فایل و…).
+
+    کدی که با یکی از قالب‌های رسمی ایونت بخواند، پیش از هر فیلتر دیگری
+    پذیرفته می‌شود: قالب رسمی خودش گویاترین شاهد است.
+    """
+    if not code:
+        return False
+    if is_hunt_code(code):
+        return True
     if len(set(code)) < 4:
         return False
     if re.fullmatch(r"0+", code) or re.fullmatch(r"(\d)\1+", code):
@@ -326,9 +420,13 @@ def plausible_code(code: str) -> bool:
 
 
 def find_codes(text: str, pattern: str | None = None,
-               min_len: int = 8, max_len: int = 24) -> list[str]:
-    """استخراج توکن‌های شبیه رمز از متن؛ بدون تکرار و با حفظ ترتیب."""
-    pattern = pattern or r"(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{8,24}"
+               min_len: int = 5, max_len: int = 24) -> list[str]:
+    """استخراج توکن‌های شبیه رمز از متن؛ بدون تکرار و با حفظ ترتیب.
+
+    الگوی پیش‌فرض ترکیب همهٔ قالب‌های شناخته‌شده است، پس هم کد قدیمی
+    ۱۰ کاراکتری و هم کد جدید «DK…» در یک پیمایش پیدا می‌شوند.
+    """
+    pattern = pattern or hunt_code_pattern()
     found: list[str] = []
     seen: set[str] = set()
     for m in re.finditer(pattern, text or ""):

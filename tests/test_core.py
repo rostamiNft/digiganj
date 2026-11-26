@@ -331,3 +331,114 @@ def test_variants_bounded():
     # رشته‌ای که همهٔ نویسه‌هایش مشتبه‌اند نباید منفجر شود
     v = ocr.code_variants("OOOOOOOOOO", max_variants=10)
     assert len(v) <= 10
+
+
+# --------------------------------------------------------------------------- #
+# قالب‌های رمز دوره‌های مختلف
+# --------------------------------------------------------------------------- #
+
+
+def test_dk_format_accepted():
+    """قالب ۱۴۰۵: DK + ۳ یا ۴ حرف، فقط حروف."""
+    from digiganj import ocr
+
+    for code in ("DKABC", "DKXYZ", "dkabcd", "DKQWF", "DKAXBG"):
+        assert ocr.plausible_code(code), code
+        assert ocr.is_hunt_code(code), code
+        assert ocr.detect_format(code) == "dk-hunt", code
+
+
+def test_dk_format_rejects_near_misses():
+    from digiganj import ocr
+
+    # طول نادرست
+    assert not ocr.is_hunt_code("DKAB")
+    assert not ocr.is_hunt_code("DKABCDE")
+    # رقم در کد حروفی
+    assert not ocr.is_hunt_code("DKA0B")
+    # پیشوند نادرست
+    assert not ocr.is_hunt_code("XDKAB")
+
+
+def test_legacy_format_still_works():
+    from digiganj import ocr
+
+    assert ocr.detect_format("fvKA4jd9DP") == "legacy-1400"
+    assert ocr.is_hunt_code("fvKA4jd9DP")
+
+
+def test_find_codes_mixed_formats():
+    from digiganj import ocr
+
+    text = "کد گنج DKQWF و نیز DKAXBG و نمونهٔ قدیمی fvKA4jd9DP و 20211126"
+    found = ocr.find_codes(text)
+    assert "DKQWF" in found
+    assert "DKAXBG" in found
+    assert "fvKA4jd9DP" in found
+    assert "20211126" not in found
+
+
+def test_variants_stay_within_format():
+    """واریانت‌های یک کد DK نباید قالب را بشکنند (باگ واقعی: OKAOB، DKA0B)."""
+    from digiganj import ocr
+
+    for code in ("DKAOB", "DKISB", "DKQWF"):
+        for v in ocr.code_variants(code, max_variants=12, min_risk=1):
+            assert ocr.is_hunt_code(v), f"{code} → {v} از قالب بیرون زد"
+        for v in ocr.case_variants(code):
+            assert ocr.is_hunt_code(v), f"{code} → {v} از قالب بیرون زد"
+
+
+def test_variants_legacy_unaffected():
+    from digiganj import ocr
+
+    v = ocr.code_variants("Hx7Kp2QmR9", max_variants=12, min_risk=2)
+    assert "Hx7Kp2OmR9" in v  # p→o
+    assert all(ocr.is_hunt_code(x) for x in v)
+
+
+def test_search_url_matches_event_link():
+    """آدرس جستجو باید هم‌شکل لینک «دیدن کالاها» در صفحهٔ ایونت باشد."""
+    from digiganj import config
+
+    cfg = config.Config()
+    cats = [10942, 5604, 11225, 2402, 10476, 11112, 11586]
+    url = cfg.search_url(cats)
+    assert url.startswith("https://www.digikala.com/search/?")
+    assert "categories%5B0%5D=10942" in url
+    assert "categories%5B6%5D=11586" in url
+    assert url.endswith("&sort=7")
+
+
+def test_challenge_url_prefers_search_path():
+    from digiganj import config
+
+    cfg = config.Config()
+    ch = config.Challenge(
+        id="t", title="t",
+        starts_at="2026-11-26T00:00:00+03:30",
+        ends_at="2026-11-27T00:00:00+03:30",
+        category_ids=[10942, 5604],
+    )
+    assert "categories%5B0%5D=10942" in cfg.challenge_url(ch)
+    # بدون دسته‌بندی، مسیر قدیمی
+    ch2 = config.Challenge(
+        id="t2", title="t2",
+        starts_at="2026-11-26T00:00:00+03:30",
+        ends_at="2026-11-27T00:00:00+03:30",
+        list_path="/treasure-hunt/products/",
+    )
+    assert cfg.challenge_url(ch2).endswith("/treasure-hunt/products/")
+
+
+def test_challenge_1405_is_current():
+    from digiganj import config, utils
+
+    cfg = config.Config()
+    ch = cfg.challenge("bf-1405")
+    assert ch.era == "۱۴۰۵"
+    assert ch.code_format == "dk-hunt"
+    assert ch.category_ids
+    # اگر امروز داخل بازهٔ ایونت بودیم، باید چالش جاری همین باشد
+    if ch.contains(utils.now_ts()):
+        assert cfg.current_challenge() is not None
