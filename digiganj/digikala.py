@@ -321,22 +321,66 @@ class DigikalaClient:
     # فهرست محصولات
     # ------------------------------------------------------------------ #
     def listing_url(self, page: int, challenge) -> str:
+        """آدرس صفحهٔ فهرست، با صفحه‌بندی مناسب همان دوره.
+
+        دو خانوادهٔ آدرس داریم:
+
+        * **فهرست ایونت** (۱۴۰۰/۱۴۰۳): ``?pageno=N&sortby=4``
+        * **جستجوی دسته‌بندی** (۱۴۰۵+): ``&page=N``
+
+        پیش‌تر همیشه ``pageno`` زده می‌شد حتی روی مسیر جستجو؛ نتیجه، صفحهٔ
+        HTML به‌جای JSON و خطای «پاسخ JSON نامعتبر» بود.
+        """
+        if self._is_search_path(challenge):
+            base = self.cfg.challenge_url(challenge)
+            if page <= 1:
+                return base
+            sep = "&" if "?" in base else "?"
+            return f"{base}{sep}page={page}"
         path = challenge.list_path or self.cfg.products_path
         sep = "&" if "?" in path else "?"
         return self.cfg.url(f"{path}{sep}pageno={page}&sortby=4")
 
+    @staticmethod
+    def _is_search_path(challenge) -> bool:
+        """آیا فهرست این دوره «جستجوی دسته‌بندی» است (نه فهرست ایونت)؟"""
+        search = getattr(challenge, "search_path", "") or ""
+        if search:
+            return True
+        if getattr(challenge, "category_ids", None):
+            return True
+        return "/search/" in (getattr(challenge, "list_path", "") or "")
+
     def fetch_listing_page(self, page: int, challenge) -> ListingPage:
         url = self.listing_url(page, challenge)
         headers = self.http.identity.xhr_headers(self.cfg.challenge_url(challenge))
+        # جستجوی دسته‌بندی HTML برمی‌گرداند، فهرست ایونت JSON. اگر انتظار
+        # JSON داشته باشیم، هر صفحهٔ جستجو سه بار retry می‌شود و آخر با
+        # «پاسخ JSON نامعتبر» می‌شکند — همان خطایی که کاربر دید.
+        wants_html = self._is_search_path(challenge)
         resp = self.http.request(
             "GET",
             url,
             headers=headers,
             purpose="listing",
-            expect_json=True,
+            expect_json=not wants_html,
             use_cache=True,
             max_bytes=6 * 1024 * 1024,
         )
+        if wants_html:
+            products = self._parse_listing_html(resp.text, page)
+            if not products:
+                raise NetError(
+                    "هیچ محصولی در صفحهٔ جستجو پیدا نشد (ساختار صفحه عوض شده؟).",
+                    url,
+                    resp.status,
+                )
+            return ListingPage(
+                page=page,
+                pages=self._estimate_search_pages(resp.text, page),
+                products=products,
+                total=self._total_from_html(resp.text) or len(products),
+            )
         try:
             payload = resp.json()
         except Exception:
@@ -384,6 +428,36 @@ class DigikalaClient:
                 continue
             seen[pid] = models.Product(id=pid, page=page, rank=len(seen) + 1)
         return list(seen.values())
+
+    @staticmethod
+    def _total_from_html(html: str) -> int:
+        """تعداد کل کالاها از متن صفحه («۱۲,۹۷۶ کالا»)، با ارقام فارسی یا لاتین."""
+        m = re.search(r"([\d,\u06F0-\u06F9\u066C٬\u066B\u060C]+)\s*کالا", html)
+        if not m:
+            return 0
+        digits = m.group(1)
+        # ارقام فارسی/عربی → لاتین
+        trans = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+        cleaned = re.sub(r"[^0-9]", "", digits.translate(trans))
+        try:
+            return int(cleaned)
+        except ValueError:
+            return 0
+
+    def _estimate_search_pages(self, html: str, page: int) -> int:
+        """تعداد صفحه‌های جستجو از روی تعداد کل و اندازهٔ صفحه.
+
+        جستجوی دیجی‌کالا تعداد کالا را روی صفحه می‌نویسد («۱۲,۹۷۶ کالا»).
+        اندازهٔ صفحه در عمل ۲۴ است؛ سقف می‌گذاریم تا یک عدد نادرست، ابزار را
+        به هزاران درخواست نفرستد.
+        """
+        total = self._total_from_html(html)
+        if not total:
+            # نمی‌دانیم؛ فقط همین صفحه و یکی بعدش را امتحان کن
+            return page + 1
+        per_page = 24
+        pages = (total + per_page - 1) // per_page
+        return max(page, min(pages, 800))
 
     @staticmethod
     def _pages_from_html(html: str, page: int, count: int) -> int:

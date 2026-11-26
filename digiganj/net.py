@@ -746,7 +746,20 @@ class HttpClient:
                             self.stats.bump("retries")
                             self._sleep_backoff(attempt, "پاسخ JSON نامعتبر")
                             continue
-                        raise TransientError("پاسخ JSON نامعتبر بود.", url, status)
+                        ctype = (resp_headers.get("content-type") or "").lower()
+                        if "html" in ctype:
+                            raise TransientError(
+                                "به‌جای JSON صفحهٔ HTML برگشت — احتمالاً آدرس فهرست "
+                                "برای این دوره درست نیست. `digiganj challenge list` را "
+                                "ببینید و مسیر/دسته‌بندی‌ها را به‌روز کنید.",
+                                url,
+                                status,
+                            )
+                        raise TransientError(
+                            f"پاسخ JSON نامعتبر بود (نوع محتوا: {ctype or 'نامشخص'}).",
+                            url,
+                            status,
+                        )
                 self.stats.bump("ok")
                 self.limiter.note_success()
                 self.breaker.note_success()
