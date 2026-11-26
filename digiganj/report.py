@@ -53,6 +53,10 @@ th { color: var(--dim); font-weight: 600; font-size: 12px; }
 tr:last-child td { border-bottom: 0; }
 code { font-family: "JetBrains Mono", "Fira Code", Consolas, monospace; font-size: 13px;
   background: #0b0d12; padding: 2px 6px; border-radius: 6px; direction: ltr; display: inline-block; }
+.codecard { margin: 10px 0 12px; background:#0a0c10; border:1px solid #2a3342;
+             border-radius:10px; padding:8px; text-align:center; }
+.codecard img { width:100%; height:auto; border-radius:6px; display:block; }
+.codecard .small { margin:6px 0 2px; }
 .hist { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 6px; }
 .hrow { display: flex; align-items: center; gap: 10px; direction: ltr; }
 .hlab { width: 54px; text-align: right; flex: none; }
@@ -164,6 +168,40 @@ def _cluster_histogram(candidates: list[dict[str, Any]], challenge, cfg,
     return dict(items)
 
 
+def _embed_file(path: str, max_px: int = 900) -> str:
+    """فایل تصویری را به data-URI تبدیل می‌کند (با کوچک‌سازی اگر بزرگ بود)."""
+    try:
+        from PIL import Image
+        import io
+
+        p = Path(path)
+        if not p.is_file():
+            return ""
+        img = Image.open(p)
+        img.load()
+        if max(img.size) > max_px:
+            ratio = max_px / max(img.size)
+            img = img.resize(
+                (max(1, int(img.width * ratio)), max(1, int(img.height * ratio))),
+                Image.LANCZOS,
+            )
+        buf = io.BytesIO()
+        img.convert("RGB").save(buf, "JPEG", quality=88, optimize=True)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    except Exception:
+        return ""
+
+
+def _card_uri(c: dict[str, Any], cards: dict[int, str] | None) -> str:
+    """تصویر کادر رمز (اگر قبلاً برش خورده) به‌صورت جاسازی‌شده."""
+    if not cards:
+        return ""
+    path = cards.get(int(c.get("id") or 0), "")
+    if not path:
+        return ""
+    return _embed_file(path, max_px=1000)
+
+
 def _thumb_or_placeholder(c: dict[str, Any], cfg, embed: bool) -> str:
     path = c.get("file_path", "")
     if embed and path:
@@ -198,6 +236,7 @@ def render_html(data: dict[str, Any], cfg, embed: bool | None = None) -> str:
     prod_count = data.get("products_count") or len({c.get("product_id") for c in cands})
     notes = data.get("evidence_notes") or []
     hist = _cluster_histogram(cands, ch, cfg) if ch else {}
+    cards = data.get("cards") or {}
 
     title = f"گزارش شکار گنج — {ch.title}" if ch else "گزارش شکار گنج"
     phase = ch.phase() if ch else "finished"
@@ -258,12 +297,19 @@ def render_html(data: dict[str, Any], cfg, embed: bool | None = None) -> str:
             codes_txt = c.get("ocr_codes") or ""
             prod_url = f"https://www.digikala.com/product/dkp-{c.get('product_id')}/"
             img = _thumb_or_placeholder(c, cfg, emb)
+            card_uri = _card_uri(c, cards) if emb else ""
+            card_html = (
+                f'<div class="codecard"><img src="{card_uri}" alt="کادر رمز">'
+                '<p class="small">کادر رمز (بزرگ‌شده) — این را با چشم بخوانید.</p></div>'
+                if card_uri else ""
+            )
             parts.append(f"""<div class="card">
   {img}
   <div class="body">
     <p class="name">{name}<span class="badge">{utils.fa_num(badge_score)} امتیاز</span></p>
     <p class="meta">زمان فایل: {_esc(stamp)}</p>
     <p class="meta">{_esc(delta) if delta else '—'}</p>
+    {card_html}
     {'<p class="meta">رمزهای خوانده‌شده: <code>' + _esc(codes_txt) + '</code></p>' if codes_txt else ''}
     <p class="meta"><a href="{_esc(prod_url)}">صفحهٔ محصول</a>
        | <a href="{_esc(analyzer.image_url_large(c.get('url','')))}">تصویر کامل</a></p>

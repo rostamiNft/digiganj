@@ -1,0 +1,20 @@
+{
+ "status": 200,
+ "data": {
+  "product": {
+   "id": 6461076,
+   "title_fa": "هودی مردانه باینت مدل 2261640-72",
+   "images": {
+    "main": "https://dkstatics-public.digikala.com/digikala-products/b9bda69fb03a61d1498f9f37026e756b8c95b18a_1632197882.jpg?x-oss-process=image/resize,m_lfit,h_800,w_800/quality,q_60",
+    "image_list": [
+     "https://dkstatics-public.digikala.com/digikala-products/9437718e809537ca2d4d2dcf7fa6bcbfa42fae1b_1632197880.jpg?x-oss-process=image/resize,m_lfit,h_800,w_800/quality,q_60",
+     "https://dkstatics-public.digikala.com/digikala-products/80e63ff53e847c8e1158310a2534747824efc5b6_1632197882.jpg?x-oss-process=image/resize,m_lfit,h_800,w_800/quality,q_60",
+     "https://dkstatics-public.digikala.com/digikala-products/aa98f417693bae363db94a5badabba3506fc799b_1632197885.jpg?x-oss-process=image/resize,m_lfit,h_800,w_800/quality,q_60",
+     "https://dkstatics-public.digikala.com/digikala-products/c3b01f95ff4c00cd245d75459c784616c915b9bf_1632197887.jpg?x-oss-process=image/resize,m_lfit,h_800,w_800/quality,q_60",
+     "https://dkstatics-public.digikala.com/digikala-products/f5c59e8af27304193ffdb65e58fe0a970d7880a7_1632197890.jpg?x-oss-process=image/resize,m_lfit,h_800,w_800/quality,q_60",
+     "https://dkstatics-public.digikala.com/digikala-products/bf1d8c541ec260183c53cb77703e32b90ddcfb19_1632554896.jpg?x-oss-process=image/resize,m_lfit,h_800,w_800/quality,q_60"
+    ]
+   }
+  }
+ }
+}

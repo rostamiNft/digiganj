@@ -390,3 +390,11 @@ class Config:
 
     def challenge_url(self, challenge: Challenge) -> str:
         return self.url(challenge.list_path)
+
+    def gallery_api_url(self, product_id: str | int) -> str:
+        """آدرس API گالری محصول: ``/v1/product/dkp-{id}/``."""
+        return self.api_url(self.gallery_api_path.format(id=product_id))
+
+    def product_url(self, product_id: str | int) -> str:
+        """آدرس عمومی صفحهٔ محصول: ``/product/dkp-{id}/``."""
+        return self.url(self.gallery_html_path.format(id=product_id))

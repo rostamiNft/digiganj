@@ -207,6 +207,16 @@ def _dig(d: Any, *keys: str) -> Any:
     return None
 
 
+def parse_listing_html(html: str, page: int = 1, base_url: str = "") -> list[models.Product]:
+    """تجزیهٔ HTML فهرست (مسیر جایگزین اگر API جواب نداد).
+
+    الگوی واقعی: ``div.c-listing a.c-product-box__img`` با ``href`` شامل
+    ``/product/dkp-<id>/``. تصویر ممکن است در ``src`` یا ``data-src`` باشد
+    و آدرس پروتکل‌نسبی (``//cdn…``) داشته باشد.
+    """
+    return DigikalaClient._parse_listing_html(html, page)
+
+
 def extract_gallery_from_json(payload: Any, base_url: str = "") -> list[str]:
     """استخراج لیست تصاویر گالری از ساختار JSON محصول."""
     if not isinstance(payload, dict):
@@ -407,7 +417,7 @@ class DigikalaClient:
                         self.logger.warn(f"صفحهٔ فهرست {utils.fa_num(pg)} ناموفق: {exc}")
                     return None
 
-            for res in self.http.stats and _parallel(one, batch, self.cfg.concurrency):
+            for res in _parallel(one, batch, self.cfg.concurrency):
                 if not res:
                     continue
                 for prod in res.products:

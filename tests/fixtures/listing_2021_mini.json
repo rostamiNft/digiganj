@@ -1,0 +1,383 @@
+{
+ "status": true,
+ "data": {
+  "click_impression": [
+   {
+    "id": 4958276,
+    "site_category": [
+     "کالای دیجیتال",
+     "موبایل",
+     "گوشی موبایل"
+    ],
+    "supply_category": [
+     "MO",
+     "گوشی موبایل"
+    ],
+    "name": "گوشی موبایل شیائومی مدل POCO X3 Pro M2102J20SG دو سیم‌ کارت ظرفیت 256 گیگابایت و 8 گیگابایت رم ",
+    "brand": "Xiaomi",
+    "category": "گوشی موبایل",
+    "category_id": 11,
+    "price_detail": {
+     "selling_price": 66990000,
+     "discount_percent": 0
+    },
+    "position": 1,
+    "status": "marketable",
+    "multi_color": true,
+    "multi_size": false,
+    "multi_warranty": true,
+    "multi_seller": true,
+    "buy_box_winner": 23453987,
+    "image_src": "https://dkstatics-public.digikala.com/digikala-products/77f6b5b39b58f0b81c7707e3626f55b74ee348aa_1623857594.jpg?x-oss-process=image/resize,m_lfit,h_600,w_600/quality,q_90",
+    "product_url": "https://digikala.com/product/dkp-4958276/گوشی-موبایل-شیائومی-مدل-poco-x3-pro-m2102j20sg-دو-سیم-کارت-ظرفیت-256-گیگابایت-و-8-گیگابایت-رم",
+    "rating": {
+     "rate": 88,
+     "count": 6430
+    },
+    "price": 66990000
+   },
+   {
+    "id": 6841837,
+    "site_category": [
+     "کالای دیجیتال",
+     "لوازم جانبی کالای دیجیتال",
+     "لوازم جانبی گوشی موبایل",
+     "پاوربانک (شارژر همراه)"
+    ],
+    "supply_category": [
+     "AC",
+     "پاور بانک (شارژ همراه)"
+    ],
+    "name": "شارژر همراه لیتو مدل LP-16 ظرفیت 20000 میلی‌آمپر ساعت ",
+    "brand": "لیتو",
+    "category": "پاوربانک (شارژر همراه)",
+    "category_id": 1272,
+    "price_detail": {
+     "selling_price": 8950000,
+     "discount_percent": 55
+    },
+    "position": 2,
+    "status": "marketable",
+    "multi_color": true,
+    "multi_size": false,
+    "multi_warranty": true,
+    "multi_seller": true,
+    "buy_box_winner": 23135770,
+    "image_src": "https://dkstatics-public.digikala.com/digikala-products/bd8c40078fc7683bcc8e0bd8866b3b10cfd90763_1635337665.jpg?x-oss-process=image/resize,m_lfit,h_600,w_600/quality,q_90",
+    "product_url": "https://digikala.com/product/dkp-6841837/شارژر-همراه-لیتو-مدل-lp-16-ظرفیت-20000-میلیآمپر-ساعت",
+    "rating": {
+     "rate": 90,
+     "count": 36
+    },
+    "price": 8950000
+   },
+   {
+    "id": 4122136,
+    "site_category": [
+     "کالای دیجیتال",
+     "موبایل",
+     "گوشی موبایل"
+    ],
+    "supply_category": [
+     "MO",
+     "گوشی موبایل"
+    ],
+    "name": "گوشی موبایل سامسونگ مدل Galaxy A12 SM-A125F/DS دو سیم کارت ظرفیت 64 گیگابایت",
+    "brand": "Samsung",
+    "category": "گوشی موبایل",
+    "category_id": 11,
+    "price_detail": {
+     "selling_price": 42500000,
+     "discount_percent": 0
+    },
+    "position": 3,
+    "status": "marketable",
+    "multi_color": true,
+    "multi_size": false,
+    "multi_warranty": true,
+    "multi_seller": true,
+    "buy_box_winner": 22977826,
+    "image_src": "https://dkstatics-public.digikala.com/digikala-products/c5c4a0bb88dc312a4c2f6de0b1567ef0da31a2d9_1624085323.jpg?x-oss-process=image/resize,m_lfit,h_600,w_600/quality,q_90",
+    "product_url": "https://digikala.com/product/dkp-4122136/گوشی-موبایل-سامسونگ-مدل-galaxy-a12-sm-a125fds-دو-سیم-کارت-ظرفیت-64-گیگابایت",
+    "rating": {
+     "rate": 86,
+     "count": 7659
+    },
+    "price": 42500000
+   }
+  ],
+  "trackerData": {
+   "source": 2,
+   "page": 1,
+   "pages": 46,
+   "foundItems": 1654,
+   "query": "",
+   "bannerId": null,
+   "categoryId": null,
+   "attributes": {
+    "sort_by": 4,
+    "has_selling_stock": false,
+    "has_ready_to_shipment": 0,
+    "promotion": 15642996
+   },
+   "products": [
+    {
+     "product_id": 4958276,
+     "category_id": 11,
+     "brand_id": 1662,
+     "is_sponsored": false,
+     "selling_price": 66990000
+    },
+    {
+     "product_id": 6841837,
+     "category_id": 1272,
+     "brand_id": 23635,
+     "is_sponsored": false,
+     "selling_price": 8950000
+    },
+    {
+     "product_id": 4122136,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 42500000
+    },
+    {
+     "product_id": 6460974,
+     "category_id": 11,
+     "brand_id": 10,
+     "is_sponsored": false,
+     "selling_price": 435000000
+    },
+    {
+     "product_id": 6459793,
+     "category_id": 11,
+     "brand_id": 10,
+     "is_sponsored": false,
+     "selling_price": 285000000
+    },
+    {
+     "product_id": 6351381,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 107190000
+    },
+    {
+     "product_id": 4834144,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 68490000
+    },
+    {
+     "product_id": 3007747,
+     "category_id": 11,
+     "brand_id": 10,
+     "is_sponsored": false,
+     "selling_price": 121890000
+    },
+    {
+     "product_id": 4008192,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 111950000
+    },
+    {
+     "product_id": 3246506,
+     "category_id": 11,
+     "brand_id": 1662,
+     "is_sponsored": false,
+     "selling_price": 28990000
+    },
+    {
+     "product_id": 6241822,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 39680000
+    },
+    {
+     "product_id": 4957468,
+     "category_id": 11,
+     "brand_id": 1662,
+     "is_sponsored": false,
+     "selling_price": 59590000
+    },
+    {
+     "product_id": 5086666,
+     "category_id": 211,
+     "brand_id": 719,
+     "is_sponsored": false,
+     "selling_price": 1198000
+    },
+    {
+     "product_id": 5622949,
+     "category_id": 11,
+     "brand_id": 1662,
+     "is_sponsored": false,
+     "selling_price": 45650000
+    },
+    {
+     "product_id": 4667388,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 132990000
+    },
+    {
+     "product_id": 6768113,
+     "category_id": 11,
+     "brand_id": 10,
+     "is_sponsored": false,
+     "selling_price": 303250000
+    },
+    {
+     "product_id": 4834527,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 123000000
+    },
+    {
+     "product_id": 4124946,
+     "category_id": 5848,
+     "brand_id": 1662,
+     "is_sponsored": false,
+     "selling_price": 14999000
+    },
+    {
+     "product_id": 5353513,
+     "category_id": 18,
+     "brand_id": 4,
+     "is_sponsored": false,
+     "selling_price": 376000000
+    },
+    {
+     "product_id": 3893718,
+     "category_id": 11,
+     "brand_id": 10,
+     "is_sponsored": false,
+     "selling_price": 395000000
+    },
+    {
+     "product_id": 4330247,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 294900000
+    },
+    {
+     "product_id": 6529028,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 94800000
+    },
+    {
+     "product_id": 6453096,
+     "category_id": 5848,
+     "brand_id": 10,
+     "is_sponsored": false,
+     "selling_price": 157900000
+    },
+    {
+     "product_id": 3699809,
+     "category_id": 13,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 50990000
+    },
+    {
+     "product_id": 6249234,
+     "category_id": 18,
+     "brand_id": 94,
+     "is_sponsored": false,
+     "selling_price": 85190000
+    },
+    {
+     "product_id": 4656894,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 69190000
+    },
+    {
+     "product_id": 6768092,
+     "category_id": 11,
+     "brand_id": 10,
+     "is_sponsored": false,
+     "selling_price": 412890000
+    },
+    {
+     "product_id": 5202175,
+     "category_id": 11,
+     "brand_id": 1662,
+     "is_sponsored": false,
+     "selling_price": 84990000
+    },
+    {
+     "product_id": 2087200,
+     "category_id": 11,
+     "brand_id": 20,
+     "is_sponsored": false,
+     "selling_price": 4400000
+    },
+    {
+     "product_id": 6768105,
+     "category_id": 11,
+     "brand_id": 10,
+     "is_sponsored": false,
+     "selling_price": 278800000
+    },
+    {
+     "product_id": 4259238,
+     "category_id": 11,
+     "brand_id": 1662,
+     "is_sponsored": false,
+     "selling_price": 65650000
+    },
+    {
+     "product_id": 6361920,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 36390000
+    },
+    {
+     "product_id": 5950634,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 58850000
+    },
+    {
+     "product_id": 6530107,
+     "category_id": 11,
+     "brand_id": 1662,
+     "is_sponsored": false,
+     "selling_price": 81990000
+    },
+    {
+     "product_id": 4884468,
+     "category_id": 11,
+     "brand_id": 18,
+     "is_sponsored": false,
+     "selling_price": 91990000
+    },
+    {
+     "product_id": 5472836,
+     "category_id": 11,
+     "brand_id": 1662,
+     "is_sponsored": false,
+     "selling_price": 154000000
+    }
+   ],
+   "sponsored_products": [],
+   "searchPhase": null,
+   "searchModelName": null,
+   "searchModelVersion": null
+  }
+ }
+}

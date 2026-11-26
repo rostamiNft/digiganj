@@ -127,31 +127,172 @@ CONFUSABLE_MAP = str.maketrans({
     "9": "g", "q": "9",
 })
 
+# اشتباهات واقعی مشاهده‌شده در تصاویر کارت رمز (فونت مونو و وزن ضخیم):
+# حروف گرد در شبکهٔ کوچک به هم می‌چسبند، دنبالهٔ حروف پایین‌رو گم می‌شود.
+# هر جفت، دو طرف تبدیل‌پذیر است تا هر خوانشی قابل بازبینی باشد.
+CONFUSABLE_PAIRS: dict[str, tuple[str, ...]] = {
+    "p": ("o", "q", "b"),
+    "b": ("p", "6", "h"),
+    "q": ("g", "p", "9"),
+    "d": ("a", "o", "q"),
+    "o": ("p", "0", "e"),
+    "a": ("d", "o"),
+    "e": ("o", "c"),
+    "c": ("e", "o"),
+    "n": ("h", "m", "u"),
+    "h": ("n", "b", "k"),
+    "u": ("n", "v"),
+    "m": ("n", "w"),
+    "w": ("m", "v"),
+    "v": ("u", "y"),
+    "y": ("v", "j"),
+    "j": ("y", "i"),
+    "i": ("j", "l", "1"),
+    "l": ("i", "1", "I"),
+    "I": ("l", "1", "i"),
+    "Q": ("O", "0", "G"),
+    "O": ("Q", "0", "D"),
+    "D": ("O", "0"),
+    "G": ("6", "C", "Q"),
+    "C": ("G", "O"),
+    "P": ("R", "F"),
+    "R": ("P", "B"),
+    "F": ("P", "E"),
+    "E": ("F", "B"),
+    "B": ("8", "R", "E"),
+    "S": ("5", "8"),
+    "Z": ("2", "7"),
+    "2": ("Z", "7"),
+    "7": ("2", "T", "1"),
+    "T": ("7", "Y"),
+    "Y": ("T", "V"),
+    "N": ("M", "H"),
+    "M": ("N", "W"),
+    "H": ("N", "M"),
+    "K": ("X", "R"),
+    "U": ("V", "0"),
+    "V": ("U", "Y"),
+    "A": ("4", "R"),
+    "6": ("G", "b", "8"),
+    "8": ("B", "6", "S"),
+    "9": ("g", "q"),
+    "g": ("9", "q", "y"),
+}.copy()
+
+# جلوی اشتباه رایج: خود-تبدیل حذف شود
+for _k, _vs in list(CONFUSABLE_PAIRS.items()):
+    CONFUSABLE_PAIRS[_k] = tuple(v for v in _vs if v != _k)
+
+# ریسک اشتباه: کدام نویسه‌ها در عمل بیشتر اشتباه خوانده می‌شوند؟
+# ۳ = تقریباً همیشه محتمل (شکل یکسان در شبکهٔ کوچک)
+# ۲ = محتمل (فقط یک بخش شکل متفاوت است)
+# ۱ = کم‌احتمال (شکل کاملاً متفاوت)
+CONFUSABLE_RISK: dict[str, int] = {
+    "0": 3, "O": 3, "Q": 3, "o": 3, "p": 3, "q": 3, "g": 3,
+    "l": 3, "1": 3, "I": 3, "i": 3, "|": 3,
+    "5": 2, "S": 2, "8": 2, "B": 2, "6": 2, "G": 2, "9": 2,
+    "2": 2, "Z": 2, "c": 2, "e": 2, "a": 2, "d": 2, "b": 2,
+    "u": 2, "v": 2, "n": 2, "h": 2, "m": 2, "w": 2, "y": 2, "j": 2,
+    "C": 1, "D": 1, "E": 1, "F": 1, "H": 1, "K": 1, "M": 1, "N": 1,
+    "P": 1, "R": 1, "T": 1, "U": 1, "V": 1, "W": 1, "X": 1, "Y": 1,
+    "7": 1, "A": 1, "4": 1,
+}
+
 
 def normalize_code_token(token: str) -> str:
     return token.strip()
 
 
-def code_variants(code: str, max_variants: int = 8) -> list[str]:
-    """نسخه‌های محتمل رمز برای وقتی که نویسهٔ مشتبه اشتباه خوانده شده باشد.
+def confusables(ch: str) -> tuple[str, ...]:
+    """نویسه‌های هم‌شکل که در شبکهٔ کوچک با ``ch`` اشتباه می‌شوند."""
+    out: list[str] = []
+    for v in CONFUSABLE_PAIRS.get(ch, ()):
+        if v not in out:
+            out.append(v)
+    # نگاشت قدیمی تک‌حرفی هم پشتیبانی شود
+    legacy = ch.translate(CONFUSABLE_MAP)
+    if legacy != ch and legacy not in out:
+        out.append(legacy)
+    return tuple(out)
 
-    مثال: «0» ممکن است «O» بوده باشد. تعداد نسخه‌ها محدود می‌شود تا
-    بررسی کد به انفجار ترکیبی نرسد.
+
+def case_variants(code: str) -> list[str]:
+    """گونه‌های حرف بزرگ/کوچک — رمز به بزرگی و کوچکی حروف حساس است.
+
+    OCR اغلب «x» و «X» را یکی می‌خواند. سه نسخهٔ ارزان و پرارزش ساخته
+    می‌شود: همهٔ حروف کوچک، همهٔ حروف بزرگ، و «متعارف» (حروف کوچک جز
+    آغاز هر بخشی که با رقم جدا شده — الگوی رایج رمزها).
     """
-    positions = [i for i, ch in enumerate(code) if ch in "0O1Il|5S8B2Z6G9gq"]
-    if not positions:
+    if not code:
         return []
+    out: list[str] = []
+    lower = code.lower()
+    upper = code.upper()
+    for v in (lower, upper, code):
+        if v not in out:
+            out.append(v)
+    # الگوی رایج: حرف اولِ هر «کلمه» بزرگ، بقیه کوچک
+    import re as _re
+
+    parts = _re.split(r"(\d+)", code)
+    normal = ""
+    for part in parts:
+        if part.isdigit() or not part:
+            normal += part
+        else:
+            normal += part[0].upper() + part[1:].lower()
+    if normal and normal not in out:
+        out.append(normal)
+    return [v for v in out if v != code]
+
+
+def code_variants(code: str, max_variants: int = 8, positions: int = 3,
+                  per_position: int = 2, min_risk: int = 1) -> list[str]:
+    """نسخه‌های محتمل رمز برای وقتی نویسه‌ای اشتباه خوانده شده باشد.
+
+    دو نوع واریانت ساخته می‌شود:
+
+    * **تک‌موقعیتی**: یک نویسهٔ مشتبه با هم‌شکلش عوض می‌شود (``p``↔``o``).
+    * **چندموقعیتی**: اگر دو نویسهٔ مجاور هم مشتبه باشند، نسخهٔ جایگزینی هر
+      دو با هم هم ساخته می‌شود (مثل ``20``→``2O``).
+
+    تعداد محدود است تا فهرست نامزدها از کنترل خارج نشود؛ کاربر خودش
+    نسخه‌ها را به‌ترتیب در فرم رسمی می‌آزماید.
+    """
+    if not code:
+        return []
+    idx = [
+        i for i, ch in enumerate(code)
+        if confusables(ch) and CONFUSABLE_RISK.get(ch, 1) >= min_risk
+    ]
+    if not idx:
+        return []
+    # موقعیت‌های پرریسک اول: اگر «p» ممکن است «o» باشد، پیش از «H→N» بیاید
+    idx.sort(key=lambda i: (-CONFUSABLE_RISK.get(code[i], 1), i))
     variants: list[str] = []
-    for i in positions[:4]:
-        ch = code[i]
-        repl = {"0": "O", "O": "0", "1": "I", "I": "1", "l": "1", "|": "1",
-                "5": "S", "S": "5", "8": "B", "B": "8", "2": "Z", "Z": "2",
-                "6": "G", "G": "6", "9": "g", "g": "9", "q": "9"}.get(ch)
-        if not repl:
+    seen = {code}
+    # ۱) تک‌موقعیتی (فقط نویسه‌های هم‌ریسک با همان سطح)
+    for i in idx[: max(positions, 1)]:
+        risk = CONFUSABLE_RISK.get(code[i], 1)
+        for repl in [r for r in confusables(code[i]) if CONFUSABLE_RISK.get(r, 1) >= risk][:per_position]:
+            cand = code[:i] + repl + code[i + 1:]
+            if cand not in seen:
+                seen.add(cand)
+                variants.append(cand)
+                if len(variants) >= max_variants:
+                    return variants
+    # ۲) دو‌موقعیتی مجاور (اگر جا بود)
+    for i in idx:
+        if i + 1 not in idx:
             continue
-        variants.append(code[:i] + repl + code[i + 1:])
-        if len(variants) >= max_variants:
-            break
+        for r1 in confusables(code[i])[:2]:
+            for r2 in confusables(code[i + 1])[:2]:
+                cand = code[:i] + r1 + r2 + code[i + 2:]
+                if cand not in seen:
+                    seen.add(cand)
+                    variants.append(cand)
+                    if len(variants) >= max_variants:
+                        return variants
     return variants
 
 
@@ -1004,6 +1145,55 @@ def _render_ref_geometry(font, size: int, stroke: int = 0,
     if not masks:
         return 0.0, float(size), float(size)
     return line_geometry(masks)
+
+
+def extract_code_card(path: str | "Path", out_path: str | "Path | None" = None,
+                      padding: int = 8) -> str:
+    """برش ناحیهٔ کادر رمز از تصویر محصول و ذخیرهٔ بزرگ‌شده.
+
+    چرا؟ موتور OCR گاهی یک نویسه را اشتباه می‌خواند (مثل `p`→`o`). کادر رمز
+    معمولاً کوچک است و در تصویر ۶۴۰×۶۴۰ گم می‌شود. این تابع همان ناحیه را
+    جدا و ۳ برابر بزرگ می‌کند تا **شما با چشم** بخوانید — سریع‌تر و قطعی‌تر
+    از هر OCR‌ای.
+
+    خروجی: مسیر فایل ذخیره‌شده (یا رشتهٔ خالی اگر ناحیه‌ای پیدا نشد).
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        return ""
+    src = Path(path)
+    if not src.exists():
+        return ""
+    try:
+        img = Image.open(src)
+        img.load()
+    except Exception:
+        return ""
+    gray = np.asarray(img.convert("L"), dtype=np.float32)
+    regions = InternalOcrEngine.dark_regions(gray, min_frac=0.02, max_frac=0.75)
+    if not regions:
+        # شاید کادر روشن با متن تیره است؛ کل تصویر را نگه می‌داریم
+        box = (0, 0, img.width, img.height)
+    else:
+        # بزرگ‌ترین ناحیهٔ با نسبت ابعاد افقی
+        def area(r):
+            return (r[2] - r[0]) * (r[3] - r[1])
+
+        box = max(regions, key=area)
+    x0 = max(0, box[0] - padding)
+    y0 = max(0, box[1] - padding)
+    x1 = min(img.width, box[2] + padding)
+    y1 = min(img.height, box[3] + padding)
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return ""
+    crop = img.crop((x0, y0, x1, y1))
+    scale = 3
+    crop = crop.resize((crop.width * scale, crop.height * scale), Image.LANCZOS)
+    target = Path(out_path) if out_path else src.with_name(src.stem + "-code-card.png")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    crop.save(target)
+    return str(target)
 
 
 def train_glyph_table(out_path: str | Path, fonts_dir: str | Path | None = None,

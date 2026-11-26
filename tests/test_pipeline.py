@@ -241,3 +241,41 @@ def test_circuit_breaker():
     assert cb.remaining() <= 1.0
     time.sleep(1.05)
     assert not cb.is_open
+
+
+def test_dashboard_state(demo_env):
+    """داشبورد باید چالش درست، شمارنده‌ها و خوشهٔ رمز را برگرداند."""
+    from digiganj import dashboard
+
+    sc = demo_env["sc"]
+    ch = demo_env["ch"]
+    store = demo_env["store"]
+    cfg = demo_env["cfg"]
+    sc.run_cycle(ch, force_listing=True)
+
+    state = dashboard.collect_state(store, cfg, None)
+    assert state["challenge"]["id"] == "demo"
+    assert state["challenge"]["phase"] == "active"
+    assert state["stats"]["images"] > 0
+    assert state["top_score"] >= 50
+    assert state["codes"], "خوشهٔ رمز باید پر باشد"
+    # هر خانواده باید خوانش خام داشته باشد (منبع حدسی به‌تنهایی کافی نیست)
+    assert any(c["source"] == "ocr" for c in state["codes"])
+    # گونه‌های یک رمز نباید به ده‌ها خوشه بشکنند (پس از خوشه‌بندی خانواده‌ای)
+    assert len(state["codes"]) <= 8, "گونه‌های یک رمز نباید به خوشه‌های بی‌شمار بشکنند"
+    # خانوادهٔ نخست باید خوانش خام باشد، نه حدس ترکیبی
+    assert state["codes"][0]["source"] == "ocr"
+
+    html = dashboard.render_dashboard(state)
+    assert 'dir="rtl"' in html
+    assert "function g2j" in html, "تبدیل جلالی باید درون‌خطی باشد"
+    assert "http" not in html.split("<script>")[0].split("</style>")[1], "بدون منبع بیرونی"
+
+
+def test_dashboard_tehran_offset_is_documented():
+    """زمان‌ها باید به وقت تهران باشند، نه منطقهٔ زمانی مرورگر."""
+    from digiganj import dashboard
+
+    html = dashboard.render_dashboard({"challenge": {}, "stats": {}})
+    assert "TEHRAN_OFFSET" in html
+    assert "3.5 * 3600" in html

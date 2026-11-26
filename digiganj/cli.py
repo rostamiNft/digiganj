@@ -31,7 +31,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from . import __version__, analyzer, config as config_mod, db, digikala, net, notify
+from . import __version__, analyzer, config as config_mod
+from . import dashboard as dash_mod
+from . import db, digikala, net, notify
 from . import ocr as ocr_mod
 from . import report as report_mod
 from . import scanner as scanner_mod
@@ -160,6 +162,29 @@ def parse_challenge_arg(args, cfg: config_mod.Config, store=None):
 # --------------------------------------------------------------------------- #
 # دستور: doctor
 # --------------------------------------------------------------------------- #
+
+
+def cmd_dashboard(args) -> int:
+    cfg = load_config(args.config)
+    store = db.Store(resolve_db_path(cfg))
+    ch = parse_challenge_arg(args, cfg, store)
+    try:
+        if args.serve:
+            C.banner("digiganj — داشبورد زنده", ch.title)
+            C.kv([("چالش", ch.id), ("وضعیت", ch.phase_fa()),
+                  ("پورت", utils.fa_num(args.port)),
+                  ("بازسازی", utils.human_duration(args.interval))])
+            C.hint("برای توقف Ctrl+C را بزنید.")
+            dash_mod.serve(store, cfg, ch, host=args.host, port=args.port,
+                           interval=args.interval)
+            return 0
+        out = Path(args.out or f"{cfg.reports_dir}/dashboard-{utils.filename_stamp()}.html")
+        p = dash_mod.write_dashboard(out, store, cfg, ch, limit=args.top)
+        C.good(f"داشبورد نوشته شد: {p}")
+        C.hint("برای حالت زنده: digiganj dashboard --serve")
+        return 0
+    finally:
+        store.close()
 
 
 def cmd_doctor(args) -> int:
@@ -491,14 +516,32 @@ def cmd_scan(args) -> int:
     return 0 if not interrupted else 130
 
 
+def collect_cards(store, candidates) -> dict[int, str]:
+    """کارت‌های رمز ذخیره‌شده برای تصاویر نامزد (id → مسیر فایل)."""
+    cards: dict[int, str] = {}
+    for c in candidates:
+        try:
+            iid = int(c.get("id") or 0)
+        except (TypeError, ValueError):
+            continue
+        if not iid:
+            continue
+        path = store.get_kv(f"card:{iid}", "")
+        if path and Path(path).exists():
+            cards[iid] = path
+    return cards
+
+
 def _write_cycle_report(store, ch, cfg) -> Path:
     import time as _t
+    cands = store.candidates(limit=200)
     data = {
         "challenge": ch,
         "generated_at": _t.time(),
-        "candidates": store.candidates(limit=200),
+        "candidates": cands,
         "alerts": store.alerts(limit=200),
         "codes": store.codes(limit=200),
+        "cards": collect_cards(store, cands),
         "stats": store.stats(),
         "products_count": store.stats().get("products", 0),
         "scans": {"cycles": store.cycles(limit=20)},
@@ -563,34 +606,33 @@ def _lev(a: str, b: str) -> int:
 
 
 def _code_quality(code: str) -> tuple:
-    """امتیاز شباهت به کد واقعی: طول ۱۰، شروع با ۲ حرف کوچک، ۸ کاراکتر بعدی مخلوط."""
-    score = 0
-    if len(code) == 10:
-        score += 3
-    elif 9 <= len(code) <= 11:
-        score += 1
-    if len(code) >= 3 and code[:2].islower():
-        score += 2
-    if any(ch.isupper() for ch in code[2:]) and any(ch.isdigit() for ch in code[2:]):
-        score += 2
-    if code.endswith(("l", "I", "1")):
-        score -= 2  # دنبالهٔ «l» اغلب چسبیدن لبهٔ کارت است
-    if code.count("O") + code.count("0") > 1:
-        score -= 1
-    return (-score, -len(code), code)
+    """امتیاز شباهت به کد واقعی (هم‌سو با داشبورد)."""
+    return dash_mod._code_rank(code)
 
 
 def _group_codes(codes: list[dict]) -> list[list[dict]]:
-    """کدهای نزدیک را کنار هم می‌گذارد؛ سرِ هر خوشه «بهترین» گونه است."""
-    order = sorted(codes, key=lambda c: _code_quality(c["code"]))
+    """کدها را با همان الگوریتم داشبورد خوشه‌بندی می‌کند.
+
+    چرا مشترک؟ اگر CLI و داشبورد دو الگوریتم جدا داشته باشند، «رمز پیشنهادی»
+    در دو جا متفاوت می‌شود و اعتماد از بین می‌رود. یک منبع حقیقت.
+    """
+    ordered = sorted(
+        codes,
+        key=lambda c: (0 if c.get("source") == "ocr" else 1,) + dash_mod._code_rank(c["code"]),
+    )
     groups: list[list[dict]] = []
-    for c in order:
-        for g in groups:
-            if _lev(g[0]["code"], c["code"]) <= 2:
+    canons: list[str] = []
+    for c in ordered:
+        canon = dash_mod.canonical_code(c["code"])
+        for i, g in enumerate(groups):
+            if (canons[i] == canon
+                    or dash_mod._close(g[0]["code"], c["code"])
+                    or dash_mod._prefix_overlap(g[0]["code"], c["code"])):
                 g.append(c)
                 break
         else:
             groups.append([c])
+            canons.append(canon)
     return groups
 
 
@@ -598,28 +640,31 @@ def cmd_codes(args) -> int:
     cfg = load_config(args.config)
     store = db.Store(resolve_db_path(cfg))
     try:
-        codes = store.codes(limit=args.top, status=args.status)
+        # همهٔ رمزها برای خوشه‌بندی خوانده می‌شوند؛ نمایش محدود به --top است
+        codes = store.codes(limit=max(400, (args.top or 20) * 20), status=args.status)
         if not codes:
             C.warn("رمز ثبت‌شده‌ای نیست.")
             return 0
-        # خوشه‌بندی واریانت‌ها: نسخه‌های نزدیک (فاصلهٔ لِوِنشتاین کوچک) کنار هم
-        groups = _group_codes(codes)
-        C.banner("رمزهای استخراج‌شده", f"{utils.fa_num(len(codes))} واریانت در {utils.fa_num(len(groups))} خوشه")
+        families = dash_mod._cluster_readings(codes, limit=args.top or 40)
+        C.banner(
+            "رمزهای استخراج‌شده",
+            f"{utils.fa_num(len(codes))} گونه در {utils.fa_num(len(families))} خانواده",
+        )
         rows = []
-        for g in groups:
-            head = g[0]
-            variants = [c["code"] for c in g[1:]]
+        for f in families:
+            alts = [r["code"] for r in f["readings"][1:4]]
             rows.append([
-                head["code"],
-                f"dkp-{head['product_id']}",
-                head["source"],
-                str(len(g)),
-                utils.jalali_short(head["ts"]),
-                "، ".join(variants[:3]) + ("…" if len(variants) > 3 else ""),
+                C.c(f["code"], YELLOW_B),
+                f"dkp-{f['product_id']}",
+                "خام" if f.get("raw") else "حدسی",
+                utils.fa_num(f["variants"]),
+                utils.jalali_short(f["ts"]),
+                "، ".join(alts) if alts else "—",
             ])
-        C.table(["رمز پیشنهادی", "محصول", "منبع", "واریانت", "زمان", "گونه‌های نزدیک"], rows)
-        C.hint("«رمز پیشنهادی» بر پایهٔ شکل کد (حروف بزرگ/کوچک و کاراکترهای مشابه) رتبه‌بندی شده است؛ "
-               "همهٔ گونه‌ها را می‌توانید به‌ترتیب در فرم رسمی بیازمایید.")
+        C.table(["رمز پیشنهادی", "محصول", "منبع", "گونه", "زمان", "خوانش‌های دیگر"], rows)
+        C.hint("ابتدا «رمز پیشنهادی» را در فرم رسمی بیازمایید؛ اگر پذیرفته نشد، "
+               "خوانش‌های دیگر همان ردیف را به‌ترتیب امتحان کنید.")
+        C.hint("«خام» یعنی موتور OCR این را خوانده؛ «حدسی» یعنی نسخهٔ جایگزین نویسه‌های مشتبه است.")
         C.hint("ستون «وضعیت» به‌صورت خودکار پر نمی‌شود؛ اعتبارسنجی رمز فقط با آزمون دستی خودتان انجام می‌شود.")
         return 0
     finally:
@@ -635,12 +680,14 @@ def cmd_report(args) -> int:
         out = Path(args.out or f"{cfg.reports_dir}/report-{stamp}.html")
         if args.embed:
             cfg.report_embed_images = True
+        cands = store.candidates(limit=args.top)
         data = {
             "challenge": ch,
             "generated_at": utils.now_ts(),
-            "candidates": store.candidates(limit=args.top),
+            "candidates": cands,
             "alerts": store.alerts(limit=args.top),
             "codes": store.codes(limit=args.top),
+            "cards": collect_cards(store, cands),
             "stats": store.stats(),
             "products_count": store.stats().get("products", 0),
             "scans": {"cycles": store.cycles(limit=30)},
@@ -687,6 +734,7 @@ def cmd_image(args) -> int:
             ("وضعیت", img["kind"] or "—"),
             ("رمزها", img.get("ocr_codes") or "—"),
             ("مسیر محلی", img.get("file_path") or "(دانلود نشده)"),
+            ("کادر رمز", store.get_kv(f"card:{args.image_id}", "") or "(برش نخورده)"),
         ])
         C.write("")
         C.write(C.c("پیوند تصویر: ", GRAY) + analyzer.image_url_large(img["url"]))
@@ -706,6 +754,51 @@ def cmd_image(args) -> int:
 # --------------------------------------------------------------------------- #
 # دستور: demo
 # --------------------------------------------------------------------------- #
+
+
+def cmd_card(args) -> int:
+    """نمایش/برش کادر رمز یک تصویر برای خواندن با چشم."""
+    cfg = load_config(args.config)
+    store = db.Store(resolve_db_path(cfg))
+    try:
+        if args.image_id:
+            img = store.image(args.image_id)
+            if not img:
+                C.err(f"تصویر #{args.image_id} در پایگاه‌داده نیست.")
+                return 1
+            src = img.get("file_path") or ""
+            if not src or not Path(src).exists():
+                C.warn("نسخهٔ محلی تصویر موجود نیست؛ ابتدا `digiganj scan` را اجرا کنید.")
+                return 1
+            out = args.out or str(Path(cfg.reports_dir) / f"code-card-{args.image_id}.png")
+            card = ocr_mod.extract_code_card(src, out)
+            if not card:
+                C.warn("کادری در تصویر پیدا نشد؛ خود تصویر را ببینید: " + src)
+                return 1
+            C.good(f"کادر رمز: {card}")
+            C.hint("فایل را باز کنید و رمز را با چشم بخوانید — این دقیق‌ترین روش است.")
+            return 0
+
+        # بدون شناسه: آخرین کارت‌ها (از هشدارهای اخیر)
+        rows = []
+        for a in store.alerts(limit=args.top):
+            if a.get("image_id"):
+                card = store.get_kv(f"card:{a['image_id']}", "")
+                rows.append([
+                    utils.fa_num(a["image_id"]),
+                    f"dkp-{a['product_id']}",
+                    utils.fa_num(round(float(a["score"]))),
+                    utils.shorten(a.get("codes") or "—", 40),
+                    utils.shorten(card or "—", 60),
+                ])
+        if not rows:
+            C.warn("هنوز کارتی ساخته نشده. یک اسکن با OCR اجرا کنید.")
+            return 0
+        C.banner("کادرهای رمز", "برای خواندن با چشم")
+        C.table(["#تصویر", "محصول", "امتیاز", "رمزهای OCR", "فایل کادر"], rows)
+        return 0
+    finally:
+        store.close()
 
 
 def cmd_demo(args) -> int:
@@ -941,6 +1034,18 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--config", help="مسیر فایل پیکربندی (پیش‌فرض: config.json)")
     sub = ap.add_subparsers(dest="cmd")
 
+    p = sub.add_parser("dashboard", help="داشبورد وضعیت (فایل یا سرور زنده)")
+    p.add_argument("--serve", action="store_true", help="اجرای سرور زنده")
+    p.add_argument("--host", default="127.0.0.1")
+    p.add_argument("--port", type=int, default=8811)
+    p.add_argument("--interval", type=float, default=3.0,
+                   help="فاصلهٔ بازسازی وضعیت (ثانیه)")
+    p.add_argument("--top", type=int, default=12, help="حداکثر ردیف هر بخش")
+    p.add_argument("--out", help="مسیر فایل خروجی (حالت بدون سرور)")
+    p.add_argument("--challenge", default="auto")
+    p.add_argument("--config", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_dashboard)
+
     p = sub.add_parser("doctor", help="بررسی سلامت محیط و دسترسی شبکه")
     p.add_argument("--config", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_doctor)
@@ -1060,6 +1165,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--image-id", type=int)
     p.add_argument("--config", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_ocr_test)
+
+    p = sub.add_parser("card", help="برش/نمایش کادر رمز برای خواندن با چشم")
+    p.add_argument("image_id", nargs="?", type=int, help="شناسهٔ تصویر (خالی=آخرین کارت‌ها)")
+    p.add_argument("--out", help="مسیر فایل خروجی PNG")
+    p.add_argument("--top", type=int, default=10)
+    p.add_argument("--config", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
+    p.set_defaults(func=cmd_card)
 
     p = sub.add_parser("demo", help="اجرای سرور دموی محلی (بدون تماس با دیجی‌کالا)")
     p.add_argument("--port", type=int, default=8099)

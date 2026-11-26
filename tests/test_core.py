@@ -298,3 +298,36 @@ def test_json_roundtrip(tmp_path):
 def test_safe_filename():
     assert utils.safe_filename("a/b\\c:d") == "a_b_c_d"
     assert utils.safe_filename("تصویر-رمز ۱۲۳") == "تصویر-رمز_۱۲۳"
+
+
+# --------------------------------------------------------------------------- #
+# واریانت‌های رمز و کارت
+# --------------------------------------------------------------------------- #
+
+
+def test_confusables_and_variants():
+    from digiganj import ocr
+
+    assert "o" in ocr.confusables("p")
+    assert "Q" in ocr.confusables("O")
+    v = ocr.code_variants("Hx7Ko2OmR9", max_variants=12)
+    assert "Hx7Kp2OmR9" in v, "p→o باید جزو واریانت‌های اول باشد"
+    assert "Hx7Ko2QmR9" in v, "Q→O باید جزو واریانت‌ها باشد"
+    assert len(v) <= 12
+
+
+def test_case_variants():
+    from digiganj import ocr
+
+    cases = ocr.case_variants("HX7Ko9DP")
+    assert "hx7ko9dp" in cases
+    assert "HX7KO9DP" in cases
+    assert "HX7Ko9DP" not in cases  # خودِ ورودی تکرار نشود
+
+
+def test_variants_bounded():
+    from digiganj import ocr
+
+    # رشته‌ای که همهٔ نویسه‌هایش مشتبه‌اند نباید منفجر شود
+    v = ocr.code_variants("OOOOOOOOOO", max_variants=10)
+    assert len(v) <= 10

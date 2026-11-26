@@ -27,6 +27,7 @@ from .config import Challenge, Config
 from .console import Console, Logger
 from .db import Store
 from .net import BlockedError, CircuitOpenError, HttpClient, NetError
+from . import ocr as ocr_mod
 from .ocr import OcrRunner
 
 # --------------------------------------------------------------------------- #
@@ -361,13 +362,38 @@ class Scanner:
                 self.logger.debug(f"OCR ناموفق: {exc}")
                 continue
             result.ocr_runs += 1
+            # برش کادر رمز: سریع‌ترین راه «تأیید با چشم» برای کاربر
+            try:
+                card = ocr_mod.extract_code_card(path)
+                if card:
+                    self.store.set_kv(f"card:{int(image['id'])}", card)
+            except Exception:
+                card = ""
             if codes:
                 self.store.set_ocr(int(image["id"]), " ".join(codes), codes,
                                    self.ocr.engines[0] if self.ocr.engines else "")
                 new_codes = 0
-                for code in codes:
+                # خوانش خام خودِ موتور با منبع «ocr» ثبت می‌شود؛ گونه‌های
+                # ساختگی با منبع «variant» تا در رتبه‌بندی، خوانش واقعی همیشه
+                # بالاتر از حدس‌های ترکیبی بماند.
+                for code in dict.fromkeys(codes):
                     if self.store.add_code(code, int(image["id"]),
                                            str(image["product_id"]), source="ocr"):
+                        new_codes += 1
+                        result.codes += 1
+                guesses: list[str] = []
+                for code in codes:
+                    try:
+                        guesses.extend(
+                            ocr_mod.code_variants(code, max_variants=4, min_risk=2)
+                        )
+                    except Exception:
+                        pass
+                for code in dict.fromkeys(guesses):
+                    if code in codes:
+                        continue
+                    if self.store.add_code(code, int(image["id"]),
+                                           str(image["product_id"]), source="variant"):
                         new_codes += 1
                         result.codes += 1
                 sc = analyzer.score_image(image, challenge, self.cfg,
