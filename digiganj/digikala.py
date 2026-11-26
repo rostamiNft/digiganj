@@ -734,7 +734,14 @@ def check_availability(http: HttpClient, cfg) -> dict[str, Any]:
             else:
                 item["detail"] = f"{utils.human_bytes(len(resp.content))}"
         except Exception as exc:
-            item["detail"] = utils.shorten(str(exc), 120)
+            msg = str(exc)
+            low = msg.lower()
+            if "ssl" in low or "tls" in low or "handshake" in low or "certificate" in low:
+                msg = (
+                    f"{msg} — دسترسی TLS برقرار نشد؛ این خطای محیط است نه "
+                    "مسیر. اگر curl_cffi نصب نیست: pip install \".[browser]\""
+                )
+            item["detail"] = utils.shorten(msg, 160)
         out[name] = item
     return out
 
