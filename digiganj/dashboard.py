@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from . import analyzer, db, utils
+from . import db, utils
 from .console import Console
 
 # --------------------------------------------------------------------------- #

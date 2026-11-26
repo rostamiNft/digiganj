@@ -363,18 +363,55 @@ def render_html(data: dict[str, Any], cfg, embed: bool | None = None) -> str:
     # رمزها
     if codes:
         parts.append("<h2>رمزهای استخراج‌شده</h2>")
-        parts.append("<table><tr><th>رمز</th><th>محصول</th><th>منبع</th><th>وضعیت</th><th>زمان</th></tr>")
-        for c in codes:
+        # خانواده‌بندی: هر رمز یک خانواده با خوانش‌های نزدیک است. این کار جای
+        # «یک رمز قطعی و درست» را می‌گیرد؛ کاربر ابتدا پرتکرارترین/خام‌ترین
+        # خوانش را می‌آزماید و اگر پذیرفته نشد، خوانش بعدی همان خانواده.
+        try:
+            from .dashboard import _cluster_readings
+
+            families = _cluster_readings(codes, limit=30)
+        except Exception:
+            families = []
+        if families:
             parts.append(
-                "<tr>"
-                f"<td><code>{_esc(c.get('code'))}</code></td>"
-                f"<td>dkp-{_esc(c.get('product_id'))}</td>"
-                f"<td>{_esc(c.get('source'))}</td>"
-                f"<td>{_esc(c.get('status'))}</td>"
-                f"<td>{_esc(_fmt_ts(c.get('ts')))}</td>"
-                "</tr>"
+                "<table><tr><th>رمز پیشنهادی</th><th>خوانش‌های دیگر</th>"
+                "<th>محصول</th><th>گونه</th><th>نوع</th><th>زمان</th></tr>"
             )
-        parts.append("</table>")
+            for f in families:
+                alts = " ".join(
+                    f"<code>{_esc(r['code'])}</code>" for r in f["readings"][1:4]
+                ) or "—"
+                parts.append(
+                    "<tr>"
+                    f"<td><code style='color:#ffd400;font-weight:700'>{_esc(f['code'])}</code></td>"
+                    f"<td>{alts}</td>"
+                    f"<td>dkp-{_esc(f.get('product_id'))}</td>"
+                    f"<td>{utils.fa_num(f.get('variants', 1))}</td>"
+                    f"<td>{'خام' if f.get('raw') else 'حدسی'}</td>"
+                    f"<td>{_esc(_fmt_ts(f.get('ts')))}</td>"
+                    "</tr>"
+                )
+            parts.append("</table>")
+            parts.append(
+                "<p class='small'>ابتدا «رمز پیشنهادی» را در فرم رسمی بیازمایید؛ "
+                "اگر پذیرفته نشد، خوانش‌های دیگر همان ردیف را به‌ترتیب امتحان کنید. "
+                "«خام» = خوانش مستقیم موتور OCR، «حدسی» = نسخهٔ جایگزین نویسه‌های مشتبه.</p>"
+            )
+        else:
+            parts.append(
+                "<table><tr><th>رمز</th><th>محصول</th><th>منبع</th><th>وضعیت</th><th>زمان</th></tr>"
+            )
+            for c in codes:
+                parts.append(
+                    "<tr>"
+                    f"<td><code>{_esc(c.get('code'))}</code></td>"
+                    f"<td>dkp-{_esc(c.get('product_id'))}</td>"
+                    f"<td>{_esc(c.get('source'))}</td>"
+                    f"<td>{_esc(c.get('status'))}</td>"
+                    f"<td>{_esc(_fmt_ts(c.get('ts')))}</td>"
+                    "</tr>"
+                )
+            parts.append("</table>")
 
     # روش و محدودیت‌ها
     parts.append("""<h2>روش و محدودیت‌ها</h2>

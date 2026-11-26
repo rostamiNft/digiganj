@@ -1218,8 +1218,6 @@ def train_glyph_table(out_path: str | Path, fonts_dir: str | Path | None = None,
     if not fonts:
         fonts.append(("default", ""))
     count = 0
-    # رشتهٔ مرجع ارتفاع: نویسه‌هایی بدون دنباله (x-height و صعودی معمول)
-    ref_text = "xoenamXOMN0123"
     for name, path in fonts:
         for size in scales:
             for bold in thickness:

@@ -510,7 +510,6 @@ class Scanner:
                 f"{utils.fa_num(result.new_images)} تصویر تازه"
             )
 
-        fresh: list[dict[str, Any]] = []
         # دسته‌بندی برای به‌روزرسانی تدریجی: هر دسته، بلافاصله بررسی می‌شود
         batch = max(8, self.cfg.list_page_batch * 4)
         for i in range(0, len(rows), batch):

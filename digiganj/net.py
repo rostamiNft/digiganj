@@ -561,9 +561,14 @@ class HttpClient:
         self.on_block = on_block
         self.identity = identity or Identity.random(cfg)
         self.proxies = proxies or ProxyPool(cfg, logger)
-        interval = cfg.min_request_interval if hasattr(cfg, "min_request_interval") else None
+        # فاصلهٔ پایه از پیکربندی خوانده می‌شود (اگر تعریف شده باشد)
+        base_interval = (
+            min_interval
+            if min_interval is not None
+            else float(getattr(cfg, "min_request_interval", 0.06) or 0.06)
+        )
         self.limiter = RateLimiter(
-            min_interval=0.06 if min_interval is None else min_interval,
+            min_interval=max(0.0, base_interval),
             max_interval=max(2.0, cfg.backoff_cap),
         )
         self.breaker = CircuitBreaker(cfg.circuit_failures, cfg.circuit_cooldown)
