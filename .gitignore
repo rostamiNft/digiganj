@@ -1,0 +1,32 @@
+# داده‌های محلی (به‌جز جدول نویسه که بخشی از ابزار است)
+data/
+!data/
+!data/glyphs.npz
+scans/
+reports/
+logs/
+images/
+*.sqlite
+*.sqlite-journal
+codes.txt
+config.json
+
+# پایتون
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# سامانه/ویرایشگر
+.DS_Store
+.idea/
+.vscode/
+*.swp

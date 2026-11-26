@@ -1,0 +1,45 @@
+[project]
+name = "digiganj"
+version = "1.0.0"
+description = "ابزار پژوهشی شکار گنج دیجی‌کالا: یافتن نشانهٔ رمز، ثبت شواهد و گزارش شفافیت"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "digiganj" }]
+keywords = ["digikala", "treasure-hunt", "ocr", "research", "persian"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Natural Language :: Persian",
+    "Operating System :: OS Independent",
+]
+
+dependencies = [
+    "httpx[http2]>=0.27",
+    "numpy>=1.26",
+    "pillow>=10.0",
+]
+
+[project.optional-dependencies]
+# پشتانهٔ TLS واقعی مرورگر (اختیاری، اما برای پایدارترین رفتار توصیه می‌شود)
+browser = ["curl_cffi>=0.7"]
+# همه‌چیز
+full = ["curl_cffi>=0.7", "pytesseract>=0.3.10"]
+dev = ["pytest>=8.0", "ruff>=0.5"]
+
+[project.scripts]
+digiganj = "digiganj.cli:main"
+
+[tool.setuptools]
+packages = ["digiganj"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
