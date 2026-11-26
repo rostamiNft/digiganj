@@ -183,3 +183,113 @@ def test_is_search_path_detection():
         category_ids=[10942],
     )
     assert client._is_search_path(ch)
+
+
+# --------------------------------------------------------------------------- #
+# صفحهٔ جستجو باید با هدر «سند» خواسته شود، نه هدر «XHR/JSON»
+# --------------------------------------------------------------------------- #
+
+_SHELL_HTML = "<HTML><body><div id='app'>Loading...</div></body></HTML>"
+
+
+def _full_search_html(n=20, total="۱۲,۹۷۶"):
+    links = "".join(
+        f'<a href="https://www.digikala.com/product/dkp-{21345470 + i}/x/">p</a>'
+        for i in range(n)
+    )
+    return f"<html><body>{links}<span>{total} کالا</span></body></html>"
+
+
+class _FakeResp:
+    def __init__(self, text, status=200):
+        self.text = text
+        self.status = status
+        self.content = text.encode()
+        self.ok = status == 200
+
+
+class _MwHttp:
+    """دیجی‌کالا را شبیه‌سازی می‌کند: درخواست JSON ⇒ پوستهٔ خالی، سند ⇒ صفحهٔ کامل."""
+
+    def __init__(self, full=None):
+        from digiganj import net
+
+        self.identity = net.Identity(user_agent="UA", profile={})
+        self.calls: list[tuple[str, str]] = []
+        self.full = full if full is not None else _full_search_html()
+
+    def request(self, method, url, headers=None, **kw):
+        h = {k.lower(): v for k, v in (headers or {}).items()}
+        wants_json = "x-requested-with" in h or "json" in h.get("accept", "")
+        self.calls.append((url, "XHR" if wants_json else "DOCUMENT"))
+        return _FakeResp(_SHELL_HTML if wants_json else self.full)
+
+
+def test_search_listing_uses_document_headers():
+    """اگر با هدر XHR برویم، پوستهٔ خالی می‌گیریم و اسکن می‌شکند."""
+    from digiganj import config, digikala
+
+    cfg = config.Config()
+    http = _MwHttp()
+    client = digikala.DigikalaClient(cfg, http, None)
+    lp = client.fetch_listing_page(1, cfg.challenge("bf-1405"))
+
+    assert len(lp.products) == 20
+    assert lp.pages == 541
+    assert [kind for _, kind in http.calls] == ["DOCUMENT"], http.calls
+    assert "application/json" not in str(http.calls)
+
+
+def test_search_listing_falls_back_to_bare_url():
+    """اگر آدرس با page=N خالی بود، آدرس بدون آن دوباره امتحان می‌شود."""
+    from digiganj import config, digikala
+
+    class PickyHttp(_MwHttp):
+        def request(self, method, url, headers=None, **kw):
+            self.calls.append((url, "?"))
+            # صفحهٔ ۲ فقط بدون پارامتر page رندر می‌شود
+            if "&page=" in url:
+                return _FakeResp(_SHELL_HTML)
+            return _FakeResp(self.full)
+
+    cfg = config.Config()
+    http = PickyHttp()
+    client = digikala.DigikalaClient(cfg, http, None)
+    lp = client.fetch_listing_page(2, cfg.challenge("bf-1405"))
+
+    assert len(lp.products) == 20
+    assert len(http.calls) == 2, http.calls
+    assert "&page=" in http.calls[0][0]
+    assert "&page=" not in http.calls[1][0]
+
+
+def test_dead_search_page_error_is_actionable():
+    """پیام خطا باید علت (پوستهٔ خالی) را بگوید، نه ادعای «ساختار عوض شده»."""
+    import pytest
+
+    from digiganj import config, digikala, net
+
+    class DeadHttp(_MwHttp):
+        def request(self, method, url, headers=None, **kw):
+            self.calls.append((url, "?"))
+            return _FakeResp(_SHELL_HTML)
+
+    cfg = config.Config()
+    client = digikala.DigikalaClient(cfg, DeadHttp(), None)
+    with pytest.raises(net.NetError) as info:
+        client.fetch_listing_page(1, cfg.challenge("bf-1405"))
+
+    msg = str(info.value)
+    assert "پوستهٔ خالی" in msg
+    assert "doctor" in msg
+    # فهرست قدیم این دوره نیست — پیام نباید مسیر مرده را پیشنهاد کند
+    assert "treasure-hunt" not in msg
+
+
+def test_empty_listing_hint_distinguishes_captcha():
+    """صفحهٔ کپچا باید متفاوت از پوستهٔ خالی گزارش شود."""
+    from digiganj import digikala
+
+    captcha = "<html><body>" + "x" * 5000 + " captcha form</body></html>"
+    hint = digikala.DigikalaClient._empty_listing_hint(_FakeResp(captcha))
+    assert "امنیتی" in hint

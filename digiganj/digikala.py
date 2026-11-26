@@ -351,36 +351,92 @@ class DigikalaClient:
             return True
         return "/search/" in (getattr(challenge, "list_path", "") or "")
 
+    def _fetch_search_html(self, page: int, challenge, url: str) -> ListingPage:
+        """خواندن یک صفحهٔ جستجوی دسته‌بندی و تبدیلش به فهرست محصول.
+
+        جستجوی دیجی‌کالا یک اپ JavaScript است. با هدر «من JSON می‌خواهم»
+        (``X-Requested-With`` + ``Accept: application/json``) سرور فقط پوستهٔ
+        خالی «Loading...» می‌دهد و هیچ ``dkp-`` در آن نیست — همان خطای
+        «هیچ محصولی در صفحهٔ جستجو پیدا نشد». صفحه باید با هدر *سند*
+        (``Accept: text/html``، حالت navigate) خواسته شود تا رندر شود.
+
+        اگر نسخهٔ اول خالی بود، یک بار دیگر با آدرس بدون پارامتر صفحه
+        (``&page=N`` حذف‌شده) امتحان می‌شود؛ دیجی‌کالا برای بعضی کوئری‌ها
+        فقط یکی از این دو شکل را رندر می‌کند.
+        """
+        referer = self.cfg.base_url + "/"
+        attempts: list[str] = [url]
+        bare = url.split("&page=")[0].split("?page=")[0]
+        if bare != url:
+            attempts.append(bare)
+
+        last_url, status, hint = url, 0, ""
+        for attempt_url in attempts:
+            resp = self.http.request(
+                "GET",
+                attempt_url,
+                headers=self.http.identity.headers(referer),
+                purpose="listing",
+                expect_json=False,
+                use_cache=False,
+                max_bytes=6 * 1024 * 1024,
+            )
+            last_url, status = attempt_url, resp.status
+            products = self._parse_listing_html(resp.text, page)
+            if products:
+                return ListingPage(
+                    page=page,
+                    pages=self._estimate_search_pages(resp.text, page),
+                    products=products,
+                    total=self._total_from_html(resp.text) or len(products),
+                )
+            hint = self._empty_listing_hint(resp)
+
+        raise NetError(
+            "هیچ محصولی در صفحهٔ جستجو پیدا نشد — " + hint,
+            last_url,
+            status,
+        )
+
+    @staticmethod
+    def _empty_listing_hint(resp) -> str:
+        """تشخیص علت خالی بودن صفحه، برای پیام خطای گویا."""
+        text = resp.content[:200000].decode("utf-8", errors="ignore")
+        size = utils.human_bytes(len(resp.content))
+        low = text.lower()
+        if "dkp-" not in low and (len(text.strip()) < 4000 or "loading" in low):
+            return (
+                f"صفحه فقط پوستهٔ خالی اپ برگشت ({size}) و محصولی در HTML نبود. "
+                "`digiganj doctor` را ببینید؛ اگر شبکه سالم بود با `--verbose` "
+                "دوباره بزنید تا آدرس و نوع پاسخ دیده شود."
+            )
+        if "captcha" in low or "security" in low or "دسترسی شما" in text:
+            return (
+                f"صفحهٔ چالش امنیتی برگشت ({size}) — تعداد درخواست‌ها را کم "
+                "کنید یا کمی صبر کنید."
+            )
+        return (
+            f"ساختار صفحه عوض شده ({size} دریافت شد، بدون شناسهٔ محصول). "
+            "`digiganj doctor` را اجرا کنید."
+        )
+
     def fetch_listing_page(self, page: int, challenge) -> ListingPage:
         url = self.listing_url(page, challenge)
-        headers = self.http.identity.xhr_headers(self.cfg.challenge_url(challenge))
-        # جستجوی دسته‌بندی HTML برمی‌گرداند، فهرست ایونت JSON. اگر انتظار
-        # JSON داشته باشیم، هر صفحهٔ جستجو سه بار retry می‌شود و آخر با
+        # جستجو دسته‌بندی HTML برمی‌گرداند، فهرست ایونت JSON. اگر انتظار
+        # JSON داشته باشیم، هر صفحهٔ جستجو سه بار retry می‌شود و در آخر با
         # «پاسخ JSON نامعتبر» می‌شکند — همان خطایی که کاربر دید.
-        wants_html = self._is_search_path(challenge)
+        if self._is_search_path(challenge):
+            return self._fetch_search_html(page, challenge, url)
+
         resp = self.http.request(
             "GET",
             url,
-            headers=headers,
+            headers=self.http.identity.xhr_headers(self.cfg.challenge_url(challenge)),
             purpose="listing",
-            expect_json=not wants_html,
+            expect_json=True,
             use_cache=True,
             max_bytes=6 * 1024 * 1024,
         )
-        if wants_html:
-            products = self._parse_listing_html(resp.text, page)
-            if not products:
-                raise NetError(
-                    "هیچ محصولی در صفحهٔ جستجو پیدا نشد (ساختار صفحه عوض شده؟).",
-                    url,
-                    resp.status,
-                )
-            return ListingPage(
-                page=page,
-                pages=self._estimate_search_pages(resp.text, page),
-                products=products,
-                total=self._total_from_html(resp.text) or len(products),
-            )
         try:
             payload = resp.json()
         except Exception:
@@ -637,6 +693,12 @@ def check_availability(http: HttpClient, cfg) -> dict[str, Any]:
             "image",
         ),
     }
+    # آزمون واقعی جستجو: مهم‌ترین چیز برای دورهٔ جاری این است که صفحهٔ
+    # جستجو با هدر سند، شناسهٔ محصول بدهد. اگر ندهد، اسکن از همان
+    # صفحهٔ اول می‌شکند و پیام «ساختار صفحه عوض شده» گمراه‌کننده است.
+    cur = cfg.current_challenge() or (cfg.challenges[0] if cfg.challenges else None)
+    if cur is not None and "/search/" in (cfg.challenge_url(cur) or ""):
+        tests["جستجوی دسته‌بندی"] = (cfg.challenge_url(cur), "listing")
     for name, (url, kind) in tests.items():
         item: dict[str, Any] = {"url": url, "ok": False, "status": 0, "detail": ""}
         try:
@@ -659,6 +721,16 @@ def check_availability(http: HttpClient, cfg) -> dict[str, Any]:
                     item["ok"] = False
             elif kind == "html":
                 item["detail"] = "HTML دریافت شد"
+            elif kind == "listing":
+                found = len(set(re.findall(r"dkp-(\d+)", resp.text)))
+                if found:
+                    item["detail"] = f"{utils.fa_num(found)} محصول در HTML"
+                else:
+                    item["ok"] = False
+                    item["detail"] = (
+                        f"هیچ شناسهٔ محصولی در {utils.human_bytes(len(resp.content))} "
+                        "HTML نبود (پوستهٔ خالی اپ)"
+                    )
             else:
                 item["detail"] = f"{utils.human_bytes(len(resp.content))}"
         except Exception as exc:
