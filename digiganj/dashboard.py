@@ -614,6 +614,11 @@ def serve(store: db.Store, cfg=None, challenge=None, host: str = "127.0.0.1",
             return cache["state"]
 
     class Handler(BaseHTTPRequestHandler):
+        # HTTP/1.1 لازم است تا اتصال برای درخواست‌های تکراری باز بماند؛
+        # داشبورد هر چند ثانیه state.json را می‌خواند و با HTTP/1.0 هر بار
+        # یک اتصال تازه برقرار می‌شد (کندی محسوس و بار اضافی روی پروکسی).
+        protocol_version = "HTTP/1.1"
+
         def log_message(self, fmt, *args):  # کم‌صدا
             return
 
@@ -643,18 +648,55 @@ def serve(store: db.Store, cfg=None, challenge=None, host: str = "127.0.0.1",
 
                 raw = unquote(path[len("/local/"):])
                 p = Path(raw)
+                # محافظت واقعی: فقط فایل‌های تصویری که داخل پوشهٔ کاری (یا
+                # مسیرهای مجاز داده) هستند سرو می‌شوند. بدون این بررسی،
+                # سروری که روی 0.0.0.0 باز است می‌توانست هر .jpg/.png روی
+                # دیسک را برای هر کسی که نشانی پیش‌نمایش را دارد بخواند.
+                target = self._allowed_local(p)
+                if target is None:
+                    self._send(403, b"forbidden", "text/plain")
+                    return
+                ctype = {
+                    ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                    ".png": "image/png", ".webp": "image/webp",
+                }.get(target.suffix.lower(), "application/octet-stream")
                 try:
-                    p.relative_to(Path.cwd())
-                except (ValueError, OSError):
-                    # اجازهٔ خواندن فقط داخل پوشهٔ کاری
-                    if not p.is_absolute():
-                        pass
-                if p.is_file() and p.suffix.lower() in (".jpg", ".jpeg", ".png", ".webp"):
-                    self._send(200, p.read_bytes(), "image/jpeg")
-                else:
+                    self._send(200, target.read_bytes(), ctype)
+                except OSError:
                     self._send(404, b"not found", "text/plain")
                 return
             self._send(404, b"not found", "text/plain")
+
+        @staticmethod
+        def _allowed_local(p: Path) -> Path | None:
+            """فایل تصویری مجاز برای سرو، یا None.
+
+            مجاز = پسوند تصویر + بودن داخل یکی از ریشه‌های مجاز.
+            """
+            if p.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
+                return None
+            try:
+                resolved = p.resolve(strict=True)
+            except (OSError, RuntimeError):
+                return None
+            if not resolved.is_file():
+                return None
+            roots = [Path.cwd().resolve()]
+            if cfg is not None:
+                for attr in ("data_dir", "reports_dir", "scans_dir"):
+                    raw_root = getattr(cfg, attr, "") or ""
+                    if raw_root:
+                        try:
+                            roots.append(Path(raw_root).resolve())
+                        except (OSError, RuntimeError):
+                            continue
+            for root in roots:
+                try:
+                    resolved.relative_to(root)
+                    return resolved
+                except ValueError:
+                    continue
+            return None
 
     httpd = ThreadingHTTPServer((host, port), Handler)
     actual = httpd.server_address[1]

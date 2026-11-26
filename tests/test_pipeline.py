@@ -279,3 +279,130 @@ def test_dashboard_tehran_offset_is_documented():
     html = dashboard.render_dashboard({"challenge": {}, "stats": {}})
     assert "TEHRAN_OFFSET" in html
     assert "3.5 * 3600" in html
+
+
+def _free_port() -> int:
+    import socket
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+def _serve_in_thread(cfg, store):
+    """سرور واقعی داشبورد را در نخ پس‌زمینه بالا می‌آورد؛ (thread, port) برمی‌گرداند."""
+    import threading
+
+    from digiganj import dashboard
+
+    port = _free_port()
+    t = threading.Thread(
+        target=dashboard.serve,
+        args=(store, cfg, None, "127.0.0.1", port),
+        kwargs={"interval": 0.5, "quiet": True},
+        daemon=True,
+    )
+    t.start()
+    # انتظار برای آماده شدن پورت (بدون sleep ثابت شکننده)
+    import socket
+
+    for _ in range(100):
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                break
+        except OSError:
+            time.sleep(0.05)
+    return t, port
+
+
+def test_dashboard_local_file_guard(tmp_path, monkeypatch):
+    """فقط تصویرهای داخل ریشه‌های مجاز سرو می‌شوند.
+
+    چرا آزمون؟ سرور روی 0.0.0.0 باز می‌شود و نشانی پیش‌نمایش عمومی است؛
+    اگر این بررسی خراب شود، هر .jpg/.png روی دیسک خواندنی می‌شود.
+    """
+    import urllib.error
+    import urllib.parse
+    import urllib.request
+
+    from digiganj import config, db
+
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)  # ریشهٔ مجاز = پوشهٔ کاری سرور
+
+    store = db.Store(str(work / "d.sqlite"))
+    cfg = config.Config()
+    cfg.data_dir = str(work / "data")
+    cfg.reports_dir = str(work / "reports")
+    Path(cfg.data_dir).mkdir(parents=True, exist_ok=True)
+
+    ok_img = Path(cfg.data_dir) / "ok.png"
+    ok_img.write_bytes(b"\x89PNG\r\n\x1a\n" + b"x" * 32)
+
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    outside = outside_dir / "secret.png"
+    outside.write_bytes(b"\x89PNG\r\n\x1a\n" + b"y" * 32)
+
+    _t, port = _serve_in_thread(cfg, store)
+
+    def get(path: str):
+        url = f"http://127.0.0.1:{port}{path}"
+        try:
+            with urllib.request.urlopen(url, timeout=4) as r:
+                return r.status, r.headers.get("Content-Type"), len(r.read())
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers.get("Content-Type"), len(e.read())
+
+    def q(p):
+        return urllib.parse.quote(str(p))
+
+    try:
+        status, ctype, size = get(f"/local/{q(ok_img)}")
+        assert status == 200, "تصویر داخل data_dir باید سرو شود"
+        assert ctype == "image/png", f"نوع محتوا باید PNG باشد، نه {ctype}"
+        assert size > 8
+
+        assert get(f"/local/{q(outside)}")[0] == 403, "فایل بیرون از ریشه‌ها باید رد شود"
+        assert get(f"/local/{q(work / 'd.sqlite')}")[0] == 403, "فایل غیرتصویری باید رد شود"
+        assert get(f"/local/{q(work / 'nope.png')}")[0] == 403, "فایل ناموجود باید رد شود"
+
+        assert get("/")[0] == 200
+        state_status, state_ctype, _ = get("/state.json")
+        assert state_status == 200
+        assert "application/json" in (state_ctype or "")
+    finally:
+        store.close()
+
+
+def test_dashboard_http11_keepalive(tmp_path, monkeypatch):
+    """اتصال باید HTTP/1.1 و قابل استفادهٔ دوباره باشد (داشبورد هر ۳ ثانیه poll می‌کند)."""
+    import http.client
+
+    from digiganj import config, db
+
+    work = tmp_path / "w"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    store = db.Store(str(work / "d.sqlite"))
+    cfg = config.Config()
+    cfg.data_dir = str(work / "data")
+    cfg.reports_dir = str(work / "reports")
+    Path(cfg.data_dir).mkdir(parents=True, exist_ok=True)
+
+    _t, port = _serve_in_thread(cfg, store)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=4)
+        conn.request("GET", "/state.json")
+        r1 = conn.getresponse()
+        r1.read()
+        assert r1.version == 11, "پروتکل باید HTTP/1.1 باشد، نه HTTP/1.0"
+        # درخواست دوم روی همان سوکت: اگر keep-alive باشد، کار می‌کند
+        conn.request("GET", "/")
+        r2 = conn.getresponse()
+        assert r2.status == 200
+        assert len(r2.read()) > 100
+        conn.close()
+    finally:
+        store.close()
