@@ -339,6 +339,43 @@ def cmd_challenge(args) -> int:
         if not (args.id and args.start and args.end):
             C.err("نیاز: --id --start --end (ISO-8601).")
             return 1
+        if any(c.id == args.id for c in cfg.challenges):
+            C.err(f"چالش «{args.id}» از قبل هست. اول با `challenge rm` حذفش کنید.")
+            return 1
+
+        # الگوگیری از یک چالش موجود، تا مسیر/دسته‌بندی/قالب رمز دستی کپی نشود.
+        like = None
+        if args.like:
+            try:
+                like = cfg.challenge(args.like)
+            except KeyError:
+                C.err(f"چالش الگو «{args.like}» پیدا نشد.")
+                return 1
+
+        categories = [int(x) for x in (args.category or [])]
+        list_path = args.list_path or ""
+        code_format = args.code_format or ""
+        if like is not None:
+            if not categories:
+                categories = list(like.category_ids)
+            if not list_path:
+                list_path = like.list_path
+            if not code_format:
+                code_format = like.code_format
+
+        # تلهٔ خاموش: بدون دسته‌بندی، چالش مسیر مردهٔ /treasure-hunt/products/
+        # را به ارث می‌برد. دیجی‌کالا برای آن مسیر ۲۰۰ + HTML می‌دهد (soft-404)،
+        # پس ابزار نه ۴۰۴ می‌بیند نه JSON — فقط «پاسخ JSON نامعتبر» می‌دهد.
+        if not categories and not args.list_path:
+            C.err("برای دورهٔ جاری باید دسته‌بندی بدهید؛ مسیر پیش‌فرض "
+                  "«/treasure-hunt/products/» فقط برای دوره‌های ۱۴۰۰/۱۴۰۳ کار می‌کرد.")
+            C.hint("دسته‌بندی‌های جاکدی ۱۴۰۵ (همه در یک فرمان):")
+            C.hint("  --category 10942 --category 5604 --category 11225 "
+                   "--category 2402 --category 10476 --category 11112 --category 11586")
+            C.hint("یا از چالش موجود الگو بگیرید:  --like bf-1405")
+            C.hint("اگر آدرس فهرست دیگری دارید:  --list-path /search/?categories[0]=...")
+            return 1
+
         cfg.challenges.append(
             config_mod.Challenge(
                 id=args.id,
@@ -347,10 +384,10 @@ def cmd_challenge(args) -> int:
                 ends_at=args.end,
                 prize=args.prize or "",
                 note=args.note or "",
-                list_path=args.list_path or "/treasure-hunt/products/",
+                list_path=list_path or "/treasure-hunt/products/",
                 era=args.era or "",
-                category_ids=[int(x) for x in (args.category or [])],
-                code_format=(args.code_format or ""),
+                category_ids=categories,
+                code_format=code_format,
             )
         )
         cfg.validate()
@@ -1076,6 +1113,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="شناسهٔ دسته‌بندی که کد میان عکس‌هایش پنهان است (تکرارپذیر)")
     p.add_argument("--code-format", choices=["dk-hunt", "legacy-1400"],
                    help="قالب کد این دوره (پیش‌فرض: خودکار)")
+    p.add_argument("--like",
+                   help="مسیر/دسته‌بندی/قالب رمز را از این چالش موجود کپی کن")
     p.add_argument("--config", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_challenge)
 

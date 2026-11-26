@@ -442,3 +442,95 @@ def test_challenge_1405_is_current():
     # اگر امروز داخل بازهٔ ایونت بودیم، باید چالش جاری همین باشد
     if ch.contains(utils.now_ts()):
         assert cfg.current_challenge() is not None
+
+
+# --------------------------------------------------------------------------- #
+# ساخت چالش: تلهٔ مسیر مرده
+# --------------------------------------------------------------------------- #
+
+def _run_cli(argv, cwd):
+    """اجرای CLI در یک پوشهٔ موقت و برگرداندن (کد خروج، متن خروجی).
+
+    ``Console`` جریانش را هنگام import قفل می‌کند، پس ``redirect_stdout``
+    بی‌اثر است؛ جریان را مستقیم به نمونهٔ ``Console`` می‌دهیم.
+    """
+    import io
+    import os
+    from digiganj import cli, console
+
+    old = os.getcwd()
+    old_console = cli.C
+    buf = io.StringIO()
+    cli.C = console.Console(stream=buf)
+    os.chdir(cwd)
+    try:
+        code = cli.main(argv)
+    finally:
+        os.chdir(old)
+        cli.C = old_console
+    return code, buf.getvalue()
+
+
+def test_challenge_add_without_categories_is_refused(tmp_path):
+    """چالش بدون دسته‌بندی نباید ساخته شود — مسیر پیش‌فرض مرده است."""
+    code, out = _run_cli(
+        ["challenge", "add", "--id", "x",
+         "--start", "2026-11-26T21:00:00+03:30",
+         "--end", "2026-11-26T22:00:00+03:30"],
+        tmp_path,
+    )
+    assert code == 1, out
+    assert not (tmp_path / "config.json").exists()
+    assert "دسته‌بندی" in out
+
+
+def test_challenge_add_like_inherits_categories(tmp_path):
+    """`--like` باید دسته‌بندی و قالب رمز را کپی کند و URL جستجو بدهد."""
+    from digiganj import config, digikala
+
+    code, out = _run_cli(["config", "init"], tmp_path)
+    assert code == 0, out
+    code, out = _run_cli(
+        ["challenge", "add", "--id", "mine", "--like", "bf-1405",
+         "--start", "2026-11-26T21:00:00+03:30",
+         "--end", "2026-11-26T22:00:00+03:30"],
+        tmp_path,
+    )
+    assert code == 0, out
+
+    cfg = config.Config.load(str(tmp_path / "config.json"))
+    ch = cfg.challenge("mine")
+    assert ch.category_ids == [10942, 5604, 11225, 2402, 10476, 11112, 11586]
+    assert ch.code_format == "dk-hunt"
+
+    client = digikala.DigikalaClient(cfg, None, None)
+    url = client.listing_url(1, ch)
+    assert "/search/" in url and "categories%5B0%5D=10942" in url
+    assert "treasure-hunt" not in url
+
+
+def test_challenge_add_duplicate_is_refused(tmp_path):
+    """شناسهٔ تکراری نباید بی‌صدا اضافه شود."""
+    _run_cli(["config", "init"], tmp_path)
+    args = ["challenge", "add", "--id", "dup", "--like", "bf-1405",
+            "--start", "2026-11-26T21:00:00+03:30",
+            "--end", "2026-11-26T22:00:00+03:30"]
+    assert _run_cli(args, tmp_path)[0] == 0
+    code, out = _run_cli(args, tmp_path)
+    assert code == 1
+    assert "از قبل" in out
+
+
+def test_soft_404_html_message_mentions_path(tmp_path):
+    """وقتی HTML جای JSON می‌آید، پیام باید به مسیر فهرست اشاره کند."""
+    from digiganj import net
+
+    try:
+        raise net.TransientError(
+            "به‌جای JSON صفحهٔ HTML برگشت — احتمالاً آدرس فهرست "
+            "برای این دوره درست نیست.",
+            "https://www.digikala.com/treasure-hunt/products/?pageno=1",
+            200,
+        )
+    except net.TransientError as exc:
+        assert "آدرس فهرست" in str(exc)
